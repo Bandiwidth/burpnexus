@@ -1,0 +1,22 @@
+# Build
+build/
+.gradle/
+out/
+
+# JAR (optional: uncomment if you don't want to commit the built JAR)
+# build/libs/*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

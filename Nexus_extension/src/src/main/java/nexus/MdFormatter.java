@@ -1,0 +1,190 @@
+package nexus;
+
+import java.util.Map;
+
+/**
+ * Renders a {@link NexusItem} as a rich Markdown document optimised
+ * for VS Code Copilot / AI analysis.
+ */
+final class MdFormatter {
+
+    private final boolean includeRawRequest;
+    private final boolean includeRawResponse;
+    private final int maxBodyChars;
+
+    MdFormatter() {
+        this(true, true, 8000);
+    }
+
+    MdFormatter(boolean includeRawRequest, boolean includeRawResponse, int maxBodyChars) {
+        this.includeRawRequest  = includeRawRequest;
+        this.includeRawResponse = includeRawResponse;
+        this.maxBodyChars       = maxBodyChars;
+    }
+
+    String render(NexusItem item) {
+        StringBuilder sb = new StringBuilder(8192);
+        renderHeader(sb, item);
+        renderMetadata(sb, item);
+        renderRequest(sb, item);
+        renderResponse(sb, item);
+        renderJsonBlock(sb, item);
+        renderFooter(sb, item);
+        return sb.toString();
+    }
+
+    // ---- sections ------------------------------------------------------
+
+    private void renderHeader(StringBuilder sb, NexusItem item) {
+        String method   = safe(item.method, "?");
+        String path     = safe(item.path, "/");
+        String status   = safe(item.status, "\u2014");
+        String toolTag  = item.tool.toUpperCase();
+        sb.append("# [").append(toolTag).append("] ").append(method).append(' ').append(path).append("\n\n");
+        sb.append("> **Status:** `").append(status).append("`  |  ");
+        sb.append("**Host:** `").append(item.host).append("`  |  ");
+        sb.append("**Protocol:** `").append(item.protocol.toUpperCase()).append("`  |  ");
+        sb.append("**Port:** `").append(item.port).append("`\n\n");
+        sb.append("---\n\n");
+    }
+
+    private void renderMetadata(StringBuilder sb, NexusItem item) {
+        sb.append("## Metadata\n\n");
+        sb.append("| Field | Value |\n");
+        sb.append("| ----- | ----- |\n");
+        metaRow(sb, "Index",           String.valueOf(item.index));
+        metaRow(sb, "Tool",            item.tool);
+        metaRow(sb, "Time",            item.time);
+        metaRow(sb, "URL",             item.url);
+        metaRow(sb, "Host",            item.host);
+        metaRow(sb, "Host IP",         item.hostIp);
+        metaRow(sb, "Port",            item.port);
+        metaRow(sb, "Protocol",        item.protocol);
+        metaRow(sb, "Method",          item.method);
+        metaRow(sb, "Path",            item.path);
+        metaRow(sb, "Extension",       item.extension);
+        metaRow(sb, "HTTP Status",     item.status);
+        metaRow(sb, "Response Length",  item.responseLength);
+        metaRow(sb, "MIME Type",       item.mimeType);
+        metaRow(sb, "Comment",         item.comment);
+        metaRow(sb, "SHA-256",         item.sha256);
+        sb.append('\n');
+    }
+
+    private void renderRequest(StringBuilder sb, NexusItem item) {
+        sb.append("## Request\n\n");
+        sb.append("### Headers\n\n");
+        headersTable(sb, item.requestHeaders);
+
+        if (item.requestBody != null && !item.requestBody.isEmpty()) {
+            sb.append("\n### Body\n\n");
+            codeBlock(sb, item.requestBody, "", maxBodyChars);
+        }
+
+        if (includeRawRequest) {
+            String rawReq = item.reconstructRequestRaw();
+            if (!rawReq.isEmpty()) {
+                sb.append("\n### Raw HTTP Request\n\n");
+                codeBlock(sb, rawReq, "http", maxBodyChars);
+            }
+        }
+        sb.append('\n');
+    }
+
+    private void renderResponse(StringBuilder sb, NexusItem item) {
+        sb.append("## Response\n\n");
+
+        if (item.responseStatusLine != null && !item.responseStatusLine.isEmpty()) {
+            sb.append("**Status Line:** `").append(item.responseStatusLine).append("`\n\n");
+        }
+
+        sb.append("### Headers\n\n");
+        headersTable(sb, item.responseHeaders);
+
+        if (item.responseBody != null && !item.responseBody.isEmpty()) {
+            sb.append("\n### Body\n\n");
+            String lang = detectLang(item);
+            codeBlock(sb, item.responseBody, lang, maxBodyChars);
+        }
+
+        if (includeRawResponse) {
+            String rawResp = item.reconstructResponseRaw();
+            if (!rawResp.isEmpty()) {
+                sb.append("\n### Raw HTTP Response\n\n");
+                codeBlock(sb, rawResp, "http", maxBodyChars);
+            }
+        }
+        sb.append('\n');
+    }
+
+    private void renderJsonBlock(StringBuilder sb, NexusItem item) {
+        sb.append("## JSON Data\n\n");
+        sb.append("> This block contains the complete structured data for this request/response pair.\n");
+        sb.append("> Feed directly to VS Code Copilot or any AI assistant for analysis.\n\n");
+        sb.append("```json\n");
+        sb.append(item.toJson());
+        sb.append("\n```\n\n");
+    }
+
+    private void renderFooter(StringBuilder sb, NexusItem item) {
+        sb.append("---\n\n");
+        sb.append("*Generated by **BurpNexus** \u00b7 ");
+        sb.append("Item `").append(item.index).append("` \u00b7 ");
+        sb.append("Tool `").append(item.tool).append("` \u00b7 ");
+        sb.append("[").append(item.url).append("](").append(item.url).append(")*\n");
+    }
+
+    // ---- helpers -------------------------------------------------------
+
+    private static void metaRow(StringBuilder sb, String key, String value) {
+        String v = (value == null || value.isEmpty()) ? "\u2014" : value;
+        sb.append("| `").append(escapeMd(key)).append("` | ")
+          .append(escapeMd(v)).append(" |\n");
+    }
+
+    private static void headersTable(StringBuilder sb, Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) {
+            sb.append("_No headers captured._\n");
+            return;
+        }
+        sb.append("| Header | Value |\n");
+        sb.append("| ------ | ----- |\n");
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            sb.append("| `").append(escapeMd(e.getKey())).append("` | ")
+              .append(escapeMd(e.getValue())).append(" |\n");
+        }
+    }
+
+    private static void codeBlock(StringBuilder sb, String content, String lang, int max) {
+        boolean truncated = content.length() > max;
+        String text = truncated ? content.substring(0, max) : content;
+        sb.append("```").append(lang).append('\n');
+        sb.append(text).append('\n');
+        sb.append("```\n");
+        if (truncated) {
+            sb.append("> **[Truncated]** Content exceeds display limit. See JSON block for full data.\n");
+        }
+    }
+
+    private static String detectLang(NexusItem item) {
+        String mime = item.mimeType != null ? item.mimeType.toLowerCase() : "";
+        String body = item.responseBody != null
+            ? item.responseBody.substring(0, Math.min(200, item.responseBody.length())).trim() : "";
+        String bodyLow = body.toLowerCase();
+        if (mime.contains("json") || body.startsWith("{") || body.startsWith("[")) return "json";
+        if (mime.contains("html") || bodyLow.startsWith("<!doctype") || bodyLow.startsWith("<html")) return "html";
+        if (mime.contains("xml") || body.startsWith("<?xml") || body.startsWith("<")) return "xml";
+        if (mime.contains("javascript") || mime.contains("js")) return "javascript";
+        if (mime.contains("css")) return "css";
+        return "";
+    }
+
+    private static String escapeMd(String text) {
+        if (text == null) return "";
+        return text.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+    }
+
+    private static String safe(String val, String fallback) {
+        return (val != null && !val.isEmpty()) ? val : fallback;
+    }
+}

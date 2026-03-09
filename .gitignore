@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+
+# JAR artifacts (build locally) — except extension JAR in Nexus_extension
+*.jar
+!Nexus_extension/*.jar
+!Nexus_extension/src/gradle/wrapper/*.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local exports (if anyone runs from repo)
+burpnexus_exports/
+
+# Personal / local-only notes
+Nexus_extension/src/REVIEW.md
+
+# Copilot / IDE instructions (local use)
+burpmd-parser/.github/
