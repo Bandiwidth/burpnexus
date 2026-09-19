@@ -241,7 +241,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
             "Parse Burp Suite XML exports into AI-ready corpus data.\n"
             "Primary output is JSON. Optional Markdown can be added with --md.\n\n"
             "Typical workflow:\n"
-            "  1) Export XML from Burp (or use burpmd_extension.py)\n"
+            "  1) Export XML from Burp Suite\n"
             "  2) Run burpmd with an output mode (--sitemap recommended)\n"
             "  3) Open the output folder in VS Code and analyse with Copilot"
         ),

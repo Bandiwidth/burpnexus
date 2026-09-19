@@ -40,7 +40,7 @@ Use `gradlew.bat` on Windows. Optional RAG integration is not part of normal CI.
 - New external links must be fixed HTTPS allowlisted resources if the webview can open them.
 - Webview changes must retain nonce-based CSP and text-only rendering for untrusted evidence/model output.
 - New source or traffic collection must stay within explicit bounds and surface omissions.
-- Documentation must distinguish implemented behavior, proposed roadmap work, and live validation that has not occurred.
+- Documentation must distinguish implemented behavior, planned work, and live validation that has not occurred.
 - Dependency changes should include lockfile updates and audit results.
 
 ## Pull requests

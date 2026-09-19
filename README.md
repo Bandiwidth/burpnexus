@@ -2,13 +2,11 @@
 
 BurpNexus connects captured Burp Suite traffic to application source code for evidence-based security review. The Burp extension exports normalized traffic and deterministic review artifacts. The VS Code extension maps captured endpoints to candidate routes, builds bounded source/traffic evidence, and produces manual test plans or an inspectable prompt for a model. The optional Python CLI imports Burp XML and creates additional offline artifacts.
 
-> **Release status:** BurpNexus 1.1.0 includes tested Burp, VS Code, and Python components. Complete the live Burp and configured model-provider checks described in the [maintainer release procedure](docs/RELEASING.md) before organizational production sign-off.
-
 Use BurpNexus only on applications you are authorized to test. Generated findings, fuzz cases, and Nuclei templates are review candidates; they are not confirmed vulnerabilities and are never executed automatically.
 
 ## Components and versions
 
-The suite components are versioned independently in this release:
+The 1.1.0 release aligns all three components:
 
 | Component | Version | Purpose |
 | --- | --- | --- |
@@ -90,13 +88,9 @@ If VS Code reports “No VS Code models available,” mapping and manual plans s
 - [Installation and builds](docs/INSTALLATION.md)
 - [Tester workflow and troubleshooting](docs/USAGE.md)
 - [Detailed source-review behavior and limits](SOURCE_REVIEW_GUIDE.md)
-- [Architecture roadmap—proposal, not implemented functionality](AUTOMATION_ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy and data handling](SECURITY.md)
 - [Maintainer release procedure](docs/RELEASING.md)
-
-
-The safe [Juice Shop fixture](examples/juice-shop-export/README.md) can be used to verify installation without creating live traffic. The deterministic [source-review fixture](examples/source-review/README.md) exercises three mapped endpoints and one unobserved route.
 
 ## Development summary
 

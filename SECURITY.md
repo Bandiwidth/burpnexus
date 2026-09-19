@@ -4,11 +4,11 @@
 
 Do not publish credentials, customer traffic, private source code, or a working exploit in a public issue.
 
-If GitHub private vulnerability reporting is enabled for this repository, use **Security → Report a vulnerability**. If that option is not visible, open a minimal public issue asking the maintainer to provide a private contact; include no exploit details or sensitive evidence. Maintainers should configure a monitored private channel before announcing a public release.
+If GitHub private vulnerability reporting is enabled for this repository, use **Security → Report a vulnerability**. If that option is not visible, open a minimal issue asking the maintainer to provide a private contact; include no exploit details or sensitive evidence. Maintainers should configure a monitored private channel before distributing a release.
 
 Include the affected component/version, environment, impact, minimal reproduction conditions, and whether the issue may expose captured traffic, source excerpts, credentials, filesystem data, or requests outside selected scope.
 
-There is currently no published response-time SLA. The latest release candidate and current `main` are the maintained development lines; older snapshots may receive fixes only when a maintainer explicitly backports them.
+There is currently no published response-time SLA. The latest release and current `main` are the maintained development lines; older snapshots may receive fixes only when a maintainer explicitly backports them.
 
 ## Data-handling boundaries
 

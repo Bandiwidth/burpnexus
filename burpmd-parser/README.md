@@ -28,5 +28,3 @@ the selected, redacted context to the chosen provider only when requested. Chrom
 Use a new or empty output directory for each export. Existing indexes can be queried without supplying XML: `burpmd -o indexed-export --rag-query "review" --llm-model MODEL_ID`.
 
 Tests: install `requirements-test.txt`, then run `python -m unittest discover -s tests -p "test_*.py" -v`. The optional real-embedding check is `tests/integration_rag.py --work-dir PATH` (requires the RAG extra).
-
-The legacy `burpmd_extension.py` Jython bridge is retained for compatibility investigation but is not a supported release path.

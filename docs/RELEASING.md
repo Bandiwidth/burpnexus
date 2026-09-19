@@ -1,36 +1,10 @@
 # Maintainer release procedure
 
-This public release uses one version for all three components. The 1.1.0 assets are VSIX 1.1.0, Burp JAR 1.1.0, and Python CLI 1.1.0.
-
-## Put this candidate at the repository root
-
-GitHub reads workflows, issue templates, and security metadata only from the repository's root `.github` directory. This preserved working copy currently lives under `versions/burpnexus-github-1.1.0`; do not commit that enclosing `versions` path and expect its workflows to run.
-
-Use the contents of `burpnexus-github-1.1.0` as the repository root. The safest publication path is:
-
-1. Create a clean clone of `https://github.com/Bandiwidth/burpnexus.git` in a separate directory.
-2. Create a release branch such as `codex/github-ready-1.1.0`.
-3. Extract `burpnexus-github-1.1.0.zip` outside the clone.
-4. Copy the extracted folder's contents into the clone root. Do not copy the outer extracted folder itself.
-5. Run `git status` and confirm that `.github/workflows/ci.yml`, `README.md`, `Nexus_extension`, `burpmd-parser`, and `vscode-extension` are all at the checkout root.
-6. Rerun the checks below, commit the reviewed files, push the branch, and open a pull request.
-
-Example Git preparation commands:
-
-```sh
-git clone https://github.com/Bandiwidth/burpnexus.git
-cd burpnexus
-git switch -c codex/github-ready-1.1.0
-# Copy the extracted candidate contents into this directory, then review:
-git status
-git diff --check
-```
-
-Do not tag from the preserved parent working tree or before the pull request is merged. A tag release uses the files at that tag; nested workflows under `versions/` are ignored by GitHub.
+This release uses one version for all three components. The 1.1.0 assets are VSIX 1.1.0, Burp JAR 1.1.0, and Python CLI 1.1.0.
 
 ## Repository settings
 
-Before the first public release:
+Maintain these repository settings:
 
 1. Enable GitHub Actions with read/write workflow permissions sufficient for the tag release job's `contents: write` permission.
 2. Enable private vulnerability reporting under the repository security settings, or publish another monitored private contact.
@@ -44,7 +18,7 @@ Before the first public release:
 2. Update `CHANGELOG.md`, README version table, workflow asset names, and documentation.
 3. Run the complete local build from [INSTALLATION.md](INSTALLATION.md).
 4. Load the JAR in the intended Burp version; export, search, unload, and reload it.
-5. Install the exact packaged VSIX in an isolated VS Code profile and run the safe fixture.
+5. Install the exact packaged VSIX in an isolated VS Code profile and run a smoke test with a non-sensitive local export.
 6. Exercise the intended real VS Code model provider if the release makes model-workflow claims.
 7. Inspect the VSIX file list and verify that the packaged skill/catalog are present.
 8. Review dependency audit results and the documented RAG risk decision.

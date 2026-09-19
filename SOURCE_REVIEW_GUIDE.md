@@ -58,8 +58,6 @@ An Express application mounts `users` with `app.use('/api', authenticate, users)
 
 An authorization review should ask whether the caller can access that user's object and tenant. A 200 response and a handler calling `findById` are insufficient proof of BOLA: a global policy may enforce ownership, and the captured request may be legitimate. The assistant must describe those gaps and a two-account controlled test. The suite helps collect and cite the evidence; you validate the security conclusion.
 
-Try `examples/source-review` for a synthetic export and example source. Expected results: three matched captured endpoints and one route without captured traffic.
-
 ## Mapping support and honest limits
 
 | Source pattern | Supported static forms |

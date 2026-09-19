@@ -154,10 +154,6 @@ These are offline candidates. Current Nuclei templates use eligible GET findings
 
 After a code change, repeat both the failing security case and legitimate baseline cases. Capture updated traffic and export it. Use **Change connection** when the new export has a different directory; use **Refresh map** when the connected export/source changed in place. There is no background filesystem watcher.
 
-## Safe fixtures
-
-Use [the Juice Shop fixture](../examples/juice-shop-export/README.md) for a safe UI/import check. It contains three synthetic localhost records and no real credentials. Mapping results depend on the Juice Shop revision. Use [the deterministic source-review fixture](../examples/source-review/README.md) when you need known results: three mapped captures and one unobserved source route.
-
 ## Troubleshooting
 
 | Symptom | Check |
