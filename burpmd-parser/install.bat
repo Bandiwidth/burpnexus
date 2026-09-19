@@ -24,6 +24,7 @@ REM --- Create virtual environment ---
 if not exist ".venv" (
     echo [*] Creating virtual environment...
     python -m venv .venv
+    if errorlevel 1 exit /b 1
     echo [OK] Virtual environment created.
 ) else (
     echo [OK] Virtual environment already exists.
@@ -34,7 +35,8 @@ echo [*] Activating virtual environment...
 call .venv\Scripts\activate.bat
 
 echo [*] Installing BurpMD Parser Pro...
-pip install .
+python -m pip install "%~dp0"
+if errorlevel 1 exit /b 1
 
 REM --- Verify ---
 echo.

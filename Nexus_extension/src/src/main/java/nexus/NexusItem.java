@@ -112,7 +112,7 @@ final class NexusItem {
                 requestTarget = parts[1];
                 try {
                     URI uri = new URI(parts[1]);
-                    item.path = uri.getPath();
+                    item.path = uri.getRawPath();
                     if (item.path == null || item.path.isEmpty()) item.path = "/";
                 } catch (Exception ignored) {
                     item.path = parts[1];
@@ -140,7 +140,12 @@ final class NexusItem {
             String pathAndQuery = requestTarget.isEmpty()
                 ? (item.path.isEmpty() ? "/" : item.path)
                 : requestTarget;
-            item.url = item.protocol + "://" + item.host + portSuffix + pathAndQuery;
+            if (pathAndQuery.startsWith("http://") || pathAndQuery.startsWith("https://")) {
+                URI absolute = URI.create(pathAndQuery);
+                pathAndQuery = absolute.getRawPath() + (absolute.getRawQuery() == null ? "" : "?" + absolute.getRawQuery());
+            }
+            String authorityHost = item.host.contains(":") && !item.host.startsWith("[") ? "[" + item.host + "]" : item.host;
+            item.url = item.protocol + "://" + authorityHost + portSuffix + pathAndQuery;
         }
 
         // decode + parse response, then discard raw to save memory
@@ -190,7 +195,8 @@ final class NexusItem {
         }
         if (headers != null) {
             for (Map.Entry<String, String> e : headers.entrySet()) {
-                sb.append(e.getKey()).append(": ").append(e.getValue()).append("\r\n");
+                for (String value : e.getValue().split("\n", -1))
+                    sb.append(e.getKey()).append(": ").append(value).append("\r\n");
             }
         }
         sb.append("\r\n");
@@ -251,7 +257,7 @@ final class NexusItem {
     private static String decodeBytes(byte[] data) {
         if (data == null || data.length == 0) return "";
         try {
-            return new String(data, StandardCharsets.UTF_8);
+            return StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(data)).toString();
         } catch (Exception e) {
             return new String(data, StandardCharsets.ISO_8859_1);
         }
@@ -294,7 +300,8 @@ final class NexusItem {
             if (colon > 0) {
                 String name  = lines[i].substring(0, colon).trim();
                 String value = lines[i].substring(colon + 1).trim();
-                result.headers.merge(name, value, (old, nw) -> old + "; " + nw);
+                String existing = result.headers.keySet().stream().filter(k -> k.equalsIgnoreCase(name)).findFirst().orElse(name);
+                result.headers.merge(existing, value, (old, nw) -> old + "\n" + nw);
             }
         }
         return result;
@@ -302,6 +309,7 @@ final class NexusItem {
 
     static String makeSlug(NexusItem item) {
         String m = item.method != null && !item.method.isEmpty() ? item.method.toUpperCase() : "REQ";
+        m = m.replaceAll("[^A-Z0-9_-]", "_");
         if (m.length() > 10) m = m.substring(0, 10);
         String p = item.path != null && !item.path.isEmpty() ? item.path : "root";
         p = SLUG_UNSAFE.matcher(p).replaceAll("_");

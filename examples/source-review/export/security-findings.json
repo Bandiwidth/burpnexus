@@ -1,0 +1,50 @@
+[
+  {
+    "category": "IDOR",
+    "severity": "High",
+    "title": "Potential IDOR: GET /api/users/12",
+    "detail": "Numeric/predictable identifiers: path=12, param:id=12",
+    "host": "example.test",
+    "items": [
+      "0001_GET_api_users_12"
+    ]
+  },
+  {
+    "category": "Reflected Input (XSS candidate)",
+    "severity": "High",
+    "title": "Reflected param 'q' in response: GET /search",
+    "detail": "Value 'hello' from query param appears in response.",
+    "host": "example.test",
+    "items": [
+      "0002_GET_search"
+    ]
+  },
+  {
+    "category": "Security Headers",
+    "severity": "Medium",
+    "title": "Missing security headers on example.test",
+    "detail": "Headers never observed: content-security-policy, cross-origin-opener-policy, cross-origin-resource-policy, permissions-policy, referrer-policy, strict-transport-security, x-content-type-options, x-frame-options",
+    "host": "example.test",
+    "items": []
+  },
+  {
+    "category": "Information Disclosure",
+    "severity": "Medium",
+    "title": "Stack trace: POST /api/orders [200]",
+    "detail": "Response contains stack trace pattern.",
+    "host": "example.test",
+    "items": [
+      "0003_POST_api_orders"
+    ]
+  },
+  {
+    "category": "Cookie Security",
+    "severity": "Medium",
+    "title": "Cookie review '[REDACTED]' on example.test",
+    "detail": "Cookie flags: missing HttpOnly, missing Secure, missing SameSite. Assess against the cookie purpose.",
+    "host": "example.test",
+    "items": [
+      "0001_GET_api_users_12"
+    ]
+  }
+]

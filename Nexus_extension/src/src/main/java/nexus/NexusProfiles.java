@@ -31,11 +31,11 @@ final class NexusProfiles {
 
     static final Profile[] CONTEXT_PROFILES = {
         // AI Analysis
-        new Profile("AI Analysis", "Full AI Analysis (JSON + findings + prompts)",
+        new Profile("VS Code Review", "Export for VS Code (JSON + findings + guide)",
             ExportConfig.builder()
                 .outputMode(OutputMode.SITEMAP).dedupe(true)
                 .fullAnalysis(true).build()),
-        new Profile("AI Analysis", "Full AI Analysis (JSON + MD + findings + prompts)",
+        new Profile("VS Code Review", "Export for VS Code (JSON + MD + findings + guide)",
             ExportConfig.builder()
                 .outputMode(OutputMode.SITEMAP).includeMd(true).dedupe(true)
                 .fullAnalysis(true).build()),
@@ -103,7 +103,7 @@ final class NexusProfiles {
     // ---- tab quick-export presets --------------------------------------
 
     static final Profile[] TAB_PRESETS = {
-        new Profile("Quick", "\u25b6 Export: Full AI Analysis",
+        new Profile("Quick", "\u25b6 Export: VS Code Review",
             ExportConfig.builder()
                 .outputMode(OutputMode.SITEMAP).dedupe(true)
                 .fullAnalysis(true).build()),

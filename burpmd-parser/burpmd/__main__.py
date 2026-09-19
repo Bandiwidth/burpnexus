@@ -33,6 +33,14 @@ def main():
         print(f"BurpMD Parser Pro v{__version__}")
         sys.exit(0)
 
+    if args.rag_query and not args.input_files:
+        try:
+            from .vectordb import run_rag_query
+            run_rag_query(args.rag_query, Path(args.output_dir), provider=args.llm_provider, model=args.llm_model, verbose=args.verbose)
+            return
+        except Exception as exc:
+            parser.exit(1, f"[!] RAG query failed: {exc}\n")
+
     if not args.input_files:
         parser.print_help()
         print("\n[!] Error: At least one input XML file is required.", file=sys.stderr)
@@ -77,10 +85,34 @@ def main():
                 print(f"[!] Error: File not found: {m}", file=sys.stderr)
             sys.exit(1)
 
+        import_format = getattr(args, "import_format", "burp")
+
+        if getattr(args, "diff", False):
+            if len(args.input_files) != 2:
+                print("[!] Error: --diff requires exactly two input XML files.", file=sys.stderr)
+                sys.exit(1)
+            if args.verbose:
+                print("[*] Parsing baseline export...")
+            export1 = parser_engine.parse_file(args.input_files[0], import_format=import_format)
+            if args.verbose:
+                print("[*] Parsing comparison export...")
+            export2 = parser_engine.parse_file(args.input_files[1], import_format=import_format)
+            from .diff import generate_diff_report
+            out_path = Path(args.output_dir)
+            generate_diff_report(export1, export2, out_path, verbose=args.verbose)
+            sys.exit(0)
+
+        out = Path(args.output_dir)
+        if out.exists() and any(out.iterdir()):
+            raise ValueError("Output directory is not empty; choose a new directory to avoid stale or mixed captures")
+
         # Parse all files
         if args.verbose:
-            print(f"[*] Parsing {len(args.input_files)} XML file(s)...")
-        exports = parser_engine.parse_files(args.input_files)
+            print(f"[*] Parsing {len(args.input_files)} XML file(s) in input order...")
+
+        # Preserve capture order and propagate failures. Process pools copied whole
+        # corpora and completion order corrupted workflow inference.
+        exports = [parser_engine.parse_file(p, import_format) for p in args.input_files]
 
         if not exports:
             print("[!] Error: No valid XML files could be parsed.", file=sys.stderr)
@@ -107,10 +139,13 @@ def main():
 
         if not merged_export.items:
             print("[!] Warning: No items found in the provided XML files.", file=sys.stderr)
-            sys.exit(0)
+            sys.exit(1)
 
         # Write to disk
-        writer.write(merged_export)
+        if not args.sqlite_only:
+            writer.write(merged_export)
+        else:
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
         # --- Analysis features ---
         out_path = Path(args.output_dir)
@@ -124,6 +159,61 @@ def main():
             generate_param_index(merged_export, out_path, verbose=args.verbose)
         if run_prompts:
             generate_ai_prompts(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "extract_clients", False) or getattr(args, "full_analysis", False):
+            from .client_parser import extract_client_assets
+            extract_client_assets(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "graph", False) or getattr(args, "full_analysis", False):
+            from .graph import build_semantic_graph
+            build_semantic_graph(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "logic", False) or getattr(args, "full_analysis", False):
+            from .logic import infer_state_machine
+            infer_state_machine(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "ask_llm", None):
+            from .llm_agent import query_llm
+            ans = query_llm(merged_export, args.ask_llm, provider=args.llm_provider, model=args.llm_model, verbose=args.verbose)
+            if ans:
+                out_file = out_path / "LLM_RESPONSE.md"
+                out_file.write_text(f"# LLM Query\n\n**Query:** {args.ask_llm}\n\n**Answer:**\n\n{ans}", encoding="utf-8")
+                if args.verbose:
+                    print(f"[+] LLM response saved to {out_file}")
+
+        if getattr(args, "build_vector_db", False):
+            from .vectordb import build_vector_db
+            build_vector_db(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "rag_query", None):
+            from .vectordb import run_rag_query
+            run_rag_query(args.rag_query, out_path, provider=args.llm_provider, model=args.llm_model, verbose=args.verbose)
+
+        if args.sqlite or args.sqlite_only:
+            from .sqlite_exporter import export_to_sqlite
+            export_to_sqlite(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "openapi", False):
+            from .openapi import generate_openapi_spec
+            generate_openapi_spec(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "fuzz", False) or getattr(args, "full_analysis", False):
+            # Ensure findings exist (fuzzer reads security-findings.json)
+            if not run_findings:
+                generate_security_findings(merged_export, out_path, verbose=args.verbose)
+            from .fuzzer import generate_fuzz_manifest
+            generate_fuzz_manifest(merged_export, out_path, verbose=args.verbose)
+
+        if getattr(args, "nuclei", False) or getattr(args, "full_analysis", False):
+            # Ensure findings exist (nuclei reads security-findings.json)
+            if not run_findings and not (getattr(args, "fuzz", False) or getattr(args, "full_analysis", False)):
+                generate_security_findings(merged_export, out_path, verbose=args.verbose)
+            from .nuclei_gen import generate_nuclei_templates
+            generate_nuclei_templates(merged_export, out_path, verbose=args.verbose)
+
+        if args.vscode:
+            from .workspace import generate_workspace
+            generate_workspace(out_path)
 
     except FileNotFoundError as e:
         print(f"\n[!] Error: {e}", file=sys.stderr)
@@ -208,8 +298,15 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "input_files",
         metavar="file.xml",
-        nargs='*',
+        nargs="*",
         help="One or more Burp Suite XML export files to parse.",
+    )
+
+    parser.add_argument(
+        "--import-format",
+        choices=["burp"],
+        default="burp",
+        help="Specify the input file format. (Default: burp)",
     )
 
     # --- Output Mode ---
@@ -242,10 +339,22 @@ def create_arg_parser() -> argparse.ArgumentParser:
 
     # --- Output Options ---
     group_output = parser.add_argument_group("Output Options")
+    group_output.add_argument("--sqlite-only", action="store_true", help="Write SQLite instead of per-item corpus files.")
+    group_output.add_argument("--vscode", action="store_true", help="Generate a VS Code workspace and analysis guide.")
     group_output.add_argument(
         "-o", "--output-dir",
         default="burp_export",
         help="Directory to save the output files. (Default: 'burp_export')"
+    )
+    group_output.add_argument(
+        "--sqlite",
+        action="store_true",
+        help="Export all data into a local SQLite database (nexus.db).",
+    )
+    group_output.add_argument(
+        "--openapi",
+        action="store_true",
+        help="Generate an OpenAPI v3 specification (openapi.json) from the export.",
     )
     group_output.add_argument(
         "--md",
@@ -281,6 +390,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
 
     # --- Analysis Features ---
     group_analysis = parser.add_argument_group("AI Analysis Features")
+    group_analysis.add_argument("--llm-model", help="Provider model ID (or set BURPNEXUS_LLM_MODEL).")
     group_analysis.add_argument(
         "--auto-findings",
         action="store_true",
@@ -301,9 +411,65 @@ def create_arg_parser() -> argparse.ArgumentParser:
              "  Creates AI_ANALYSIS_PROMPTS.md with phased analysis plan.",
     )
     group_analysis.add_argument(
+        "--diff",
+        action="store_true",
+        help="Compare EXACTLY TWO input XML files (baseline and comparison)\n"
+             "  and generate DIFF_REPORT.md highlighting API changes and auth downgrades.",
+    )
+    group_analysis.add_argument(
+        "--extract-clients",
+        action="store_true",
+        help="Extract all JS/WASM files to a folder and scan them for hardcoded endpoints.",
+    )
+    group_analysis.add_argument(
+        "--graph",
+        action="store_true",
+        help="Generate a Semantic Graph (SEMANTIC_GRAPH.md) to trace parameter flow and hunt for BOLA.",
+    )
+    group_analysis.add_argument(
+        "--logic",
+        action="store_true",
+        help="Infer and generate a State Machine diagram (STATE_MACHINE.md) from user journeys.",
+    )
+    group_analysis.add_argument(
+        "--ask-llm",
+        type=str,
+        help="Ask the LLM a question about the export (requires OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY).",
+    )
+    group_analysis.add_argument(
+        "--llm-provider",
+        type=str,
+        default="openai",
+        choices=["openai", "anthropic", "gemini"],
+        help="The LLM provider to use for --ask-llm and --rag-query. (Default: openai)",
+    )
+    group_analysis.add_argument(
+        "--build-vector-db",
+        action="store_true",
+        help="Initialize a local ChromaDB and embed the proxy traffic for semantic search.",
+    )
+    group_analysis.add_argument(
+        "--rag-query",
+        type=str,
+        help="Perform a RAG query (Retrieve from Vector DB -> Ask LLM). Requires --build-vector-db to have been run first.",
+    )
+    group_analysis.add_argument(
+        "--fuzz",
+        action="store_true",
+        help="Generate a fuzz manifest (FUZZ_MANIFEST.json) and curl commands (FUZZ_COMMANDS.md)\n"
+             "  from identified security findings. Requires --auto-findings (auto-enabled).",
+    )
+    group_analysis.add_argument(
+        "--nuclei",
+        action="store_true",
+        help="Auto-generate Nuclei v3 YAML templates from security findings.\n"
+             "  Creates nuclei-templates/ directory and NUCLEI_TEMPLATES.md.",
+    )
+    group_analysis.add_argument(
         "--full-analysis",
         action="store_true",
-        help="Enable ALL analysis features: --auto-findings + --param-index + --ai-prompts.",
+        help="Enable ALL analysis features: --auto-findings + --param-index + --ai-prompts\n"
+             "  + --fuzz + --nuclei + --graph + --logic + --extract-clients.",
     )
 
     # --- Formatting Options ---
@@ -391,7 +557,7 @@ def _apply_filters(
         seen = set()
         deduped = []
         for item in filtered:
-            key = item.sha256 or ""
+            key = (item.url, item.sha256, hashlib.sha256(item.response_raw.encode("utf-8")).hexdigest())
             if key and key in seen:
                 continue
             if key:
@@ -412,7 +578,7 @@ def _apply_filters(
 
 def _rebuild_slug(item) -> str:
     """Rebuild slug after filtering/reindexing."""
-    method = (item.method or "REQ").upper()[:10]
+    method = re.sub(r"[^A-Z0-9_-]", "_", (item.method or "REQ").upper())[:10]
     path_part = re.sub(r"[^\w\-.]", "_", item.path or "root")
     path_part = re.sub(r"_+", "_", path_part).strip("_")[:60]
     return "{0:04d}_{1}_{2}".format(item.index, method, path_part or "root")
@@ -453,113 +619,17 @@ def _derive_session_tag(item) -> str:
     if not token_sources:
         return "session_anon"
 
-    digest = hashlib.sha256("|".join(token_sources).encode("utf-8", errors="replace")).hexdigest()
+    digest = hashlib.sha256("|".join(sorted(token_sources)).encode("utf-8", errors="replace")).hexdigest()
     return "session_" + digest[:8]
 
 
 def _redact_item(item):
     """Mask secret-like values in headers and raw/body fields."""
-    item.request_headers = _redact_headers(item.request_headers)
-    item.response_headers = _redact_headers(item.response_headers)
-    item.request_body = _redact_text(item.request_body)
-    item.response_body = _redact_text(item.response_body)
-    item.request_raw = _redact_text(item.request_raw)
-    item.response_raw = _redact_text(item.response_raw)
+    from .redaction import redact_item
+    redact_item(item)
+    item.slug = _rebuild_slug(item)
     item.sha256 = hashlib.sha256((item.request_raw or "").encode("utf-8", errors="replace")).hexdigest()
 
-
-def _redact_headers(headers: dict) -> dict:
-    if not headers:
-        return headers
-    out = {}
-    for key, value in headers.items():
-        k = (key or "")
-        v = value or ""
-        k_low = k.lower()
-        if k_low in {"cookie", "set-cookie"}:
-            out[k] = _mask_cookie_line(v)
-        elif (
-            k_low in {"authorization", "x-api-key", "x-auth-token",
-                       "x-csrf-token", "x-xsrf-token", "proxy-authorization"}
-            or "token" in k_low
-            or "secret" in k_low
-            or "api-key" in k_low
-            or "apikey" in k_low
-            or "auth" in k_low
-        ):
-            out[k] = _mask_tokenish(v)
-        else:
-            out[k] = v
-    return out
-
-
-_SECRET_KEY_PAT = re.compile(
-    r'("?(?:password|passwd|token|access_token|refresh_token|id_token'
-    r'|secret|client_secret|api[_-]?key|authorization|jwt|session'
-    r'|session_id|sessionid|csrf|xsrf|private_key|signing_key'
-    r'|bearer|credential|ssn|credit_card)'
-    r'"?\s*[:=]\s*")([^"]*)(")',
-    re.IGNORECASE,
-)
-
-_AUTH_HEADER_PAT = re.compile(
-    r"^(authorization|x-api-key|x-auth-token|x-csrf-token"
-    r"|x-xsrf-token|proxy-authorization)\s*:\s*(.+)$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-_COOKIE_HEADER_PAT = re.compile(
-    r"^(cookie|set-cookie)\s*:\s*(.+)$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-_QUERY_SECRET_PAT = re.compile(
-    r"([?&](?:token|auth|apikey|api_key|session|password"
-    r"|access_token|refresh_token|secret|key|csrf)=)([^&\s]+)",
-    re.IGNORECASE,
-)
-
-_BEARER_INLINE_PAT = re.compile(
-    r"(Bearer\s+)([A-Za-z0-9\-_\.]{8,})",
-    re.IGNORECASE,
-)
-
-
-def _redact_text(text: str) -> str:
-    if not text:
-        return text
-    redacted = text
-    redacted = _SECRET_KEY_PAT.sub(r"\1***REDACTED***\3", redacted)
-    redacted = _AUTH_HEADER_PAT.sub(r"\1: ***REDACTED***", redacted)
-    redacted = _COOKIE_HEADER_PAT.sub(
-        lambda m: m.group(1) + ": " + _mask_cookie_line(m.group(2)), redacted)
-    redacted = _QUERY_SECRET_PAT.sub(r"\1***REDACTED***", redacted)
-    redacted = _BEARER_INLINE_PAT.sub(r"\1***REDACTED***", redacted)
-    return redacted
-
-
-def _mask_cookie_line(cookie_line: str) -> str:
-    parts = [p.strip() for p in (cookie_line or "").split(";")]
-    masked = []
-    for p in parts:
-        if "=" in p:
-            name, _, _val = p.partition("=")
-            if name.strip():
-                masked.append(name + "=***REDACTED***")
-            else:
-                masked.append("***REDACTED***")
-        else:
-            masked.append(p)
-    return "; ".join(masked)
-
-
-def _mask_tokenish(value: str) -> str:
-    if not value:
-        return value
-    if " " in value:
-        scheme, _, _rest = value.partition(" ")
-        return scheme + " ***REDACTED***"
-    return "***REDACTED***"
 
 
 if __name__ == "__main__":

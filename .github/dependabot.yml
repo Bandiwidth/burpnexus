@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /vscode-extension
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: pip
+    directory: /burpmd-parser
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: gradle
+    directory: /Nexus_extension/src
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

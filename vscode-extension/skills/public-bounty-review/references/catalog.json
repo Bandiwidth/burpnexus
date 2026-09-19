@@ -1,0 +1,176 @@
+{
+  "id": "public-bounty-review",
+  "version": "1.0.0",
+  "reviewedOn": "2026-09-18",
+  "selection": "Eight historical disclosures/research sources; seven GitLab-hosted HackerOne report mirrors and one PortSwigger primary research article. Curated examples, not exhaustive coverage or current vulnerability claims.",
+  "sources": {
+    "H1-582349": {
+      "title": "Last pipeline status for MR leaked",
+      "author": "xanbanx",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2019-05-16",
+      "url": "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/62073",
+      "reportUrl": "https://hackerone.com/reports/582349",
+      "observation": "A merge-request status endpoint exposed pipeline information despite a separate pipeline visibility restriction."
+    },
+    "H1-1758126": {
+      "title": "Maintainer can leak webhook secret token by changing the webhook URL",
+      "author": "joaxcar",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2022-11-01",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/383113",
+      "reportUrl": "https://hackerone.com/reports/1758126",
+      "observation": "Changing a webhook destination allowed a maintainer to receive a stored secret that the interface no longer revealed."
+    },
+    "H1-427364": {
+      "title": "SSRF in Prometheus integration",
+      "author": "bull",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2018-10-23",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/8167",
+      "reportUrl": "https://hackerone.com/reports/427364",
+      "observation": "An initially external integration URL redirected to an internal destination without the destination restriction being reapplied."
+    },
+    "H1-470309": {
+      "title": "Bypass MR approval count by exploiting race condition in merge request approval",
+      "author": "flashdisk",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2018-12-20",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/10357",
+      "reportUrl": "https://hackerone.com/reports/470309",
+      "observation": "Concurrent approval submissions allowed the same participant's approval to count more than once."
+    },
+    "H1-881798": {
+      "title": "Bypass GitLab public and commit email addresses changing validation",
+      "author": "enumzero",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2020-05-24",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/219745",
+      "reportUrl": "https://hackerone.com/reports/881798",
+      "observation": "Simultaneously updating email fields let equality with a newly changed address substitute for verified ownership. This does not by itself establish a concurrency bug."
+    },
+    "H1-1398305": {
+      "title": "Stored XSS on issue comments and other pages which contain notes",
+      "author": "jarij",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2021-11-11",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/345657",
+      "reportUrl": "https://hackerone.com/reports/1398305",
+      "observation": "Rendering transformations and custom-element handling provided sanitization bypasses in stored note content."
+    },
+    "H1-3257843": {
+      "title": "Client Side Path Traversal leads to CSRF token leakage and ATO on self-hosted instances",
+      "author": "swiftee",
+      "publisher": "GitLab public report mirror",
+      "reportedOn": "2025-07-17",
+      "url": "https://gitlab.com/gitlab-org/gitlab/-/issues/577850",
+      "reportUrl": "https://hackerone.com/reports/3257843",
+      "observation": "An unencoded branch identifier altered a frontend request path and chained into a redirect. The report distinguishes a CSP-blocked hosted deployment from affected self-hosted conditions."
+    },
+    "PS-CACHE-ENTANGLEMENT": {
+      "title": "Web Cache Entanglement: Novel Pathways to Poisoning",
+      "author": "James Kettle",
+      "publisher": "PortSwigger Research",
+      "url": "https://portswigger.net/research/web-cache-entanglement",
+      "observation": "Bug bounty case studies show how cache-key omissions and differences in request interpretation can hide input effects or reuse changed responses across requests."
+    }
+  },
+  "checks": [
+    {
+      "id": "BOUNTY-01",
+      "title": "Authorization on sibling and summary endpoints",
+      "sourceIds": ["H1-582349"],
+      "applicability": "A protected resource has status, preview, export, search, or summary endpoints.",
+      "evidence": ["Resource visibility policy and two controlled roles", "Captured main and sibling requests", "Policy and response projection code"],
+      "inspect": ["Compare permission checks across entry points.", "Trace derived fields back to protected objects.", "Inspect global policy before concluding a check is missing."],
+      "steps": ["Establish permitted access to a disposable object.", "Compare main and sibling views using a denied test principal.", "Check restricted fields, including metadata, against the policy."],
+      "expected": "Every representation respects the underlying resource's visibility policy.",
+      "regression": "Pair permitted and denied cases across all representations.",
+      "caution": "A publicly intended summary is not a leak; a shared identifier alone proves nothing."
+    },
+    {
+      "id": "BOUNTY-02",
+      "title": "Stored credentials bound to editable destinations",
+      "sourceIds": ["H1-1758126"],
+      "applicability": "A webhook or integration combines a hidden credential with an editable URL.",
+      "evidence": ["Secret-access and destination-edit policies", "Configuration change and dispatch requests", "Credential binding and outbound client code"],
+      "inspect": ["Separate permission to use a secret from permission to reveal it.", "Check destination changes, redirects, and credential reuse.", "Inspect whether changing origin invalidates or reauthorizes the credential."],
+      "steps": ["Configure a dummy secret and controlled receiver.", "Using the test editor role, change to a second controlled receiver.", "Trigger one test delivery and inspect which credentials arrived."],
+      "expected": "Destination changes cannot reveal credentials outside their permitted trust boundary.",
+      "regression": "Test origin changes with dummy credentials and both permitted and restricted editors.",
+      "caution": "Some editors are intentionally entitled to the secret; establish policy before reporting."
+    },
+    {
+      "id": "BOUNTY-03",
+      "title": "Outbound destination checks after redirects",
+      "sourceIds": ["H1-427364"],
+      "applicability": "The server fetches a configurable integration, import, preview, or webhook URL.",
+      "evidence": ["Outbound destination policy", "A captured fetch configuration or request", "URL validation, redirect handling, and connection code"],
+      "inspect": ["Determine which component actually follows redirects.", "Check validation at each destination transition.", "Inspect address resolution and deployment egress restrictions."],
+      "steps": ["Establish a fetch to a controlled receiver.", "In an isolated environment, redirect to a controlled destination forbidden by the test policy.", "Correlate receiver logs to determine whether the restricted hop was requested."],
+      "expected": "Destination restrictions hold across every followed redirect.",
+      "regression": "Cover accepted initial destinations and denied redirect destinations.",
+      "caution": "An outbound callback alone proves fetching, not access to protected services."
+    },
+    {
+      "id": "BOUNTY-04",
+      "title": "Duplicate approval and one-time action races",
+      "sourceIds": ["H1-470309"],
+      "applicability": "Approvals, redemption, or one-time transitions rely on a count or uniqueness rule.",
+      "evidence": ["The unique-actor or one-use invariant", "Baseline operation and resulting state", "Transaction, uniqueness, and idempotency implementation"],
+      "inspect": ["Locate the check and state update.", "Check database enforcement rather than only UI guards.", "Inspect worker retries and actor identity binding."],
+      "steps": ["Record the initial state of a disposable object.", "In an isolated test, compare sequential repetition with a bounded pair of concurrent requests.", "Verify persisted distinct actors and effects after processing completes."],
+      "expected": "Repeated requests cannot satisfy a distinct-actor or one-use requirement.",
+      "regression": "Assert the invariant under retries and bounded concurrency.",
+      "caution": "Two successful responses need not mean two effects; one unsuccessful race attempt is inconclusive."
+    },
+    {
+      "id": "BOUNTY-05",
+      "title": "Verified identity versus mutable profile fields",
+      "sourceIds": ["H1-881798"],
+      "applicability": "A profile update changes identity fields used for verification or trust decisions.",
+      "evidence": ["Which identity attributes require verification", "Captured profile update and resulting state", "Binding, validation order, and verified-identity storage"],
+      "inspect": ["Distinguish persisted verification from equality between input fields.", "Follow combined updates in their actual order.", "Identify downstream features relying on the changed attributes."],
+      "steps": ["Use a test account and an owned but unverified address.", "Compare separate and combined updates of related fields.", "Verify stored verification state and access to a feature requiring it."],
+      "expected": "Updating matching fields cannot manufacture verified ownership.",
+      "regression": "Cover combined changes, unverified addresses, and valid verified transitions.",
+      "caution": "Unverified display text may be intentional. Do not label a same-request ordering flaw a race without concurrency evidence."
+    },
+    {
+      "id": "BOUNTY-06",
+      "title": "Sanitization followed by rendering transformations",
+      "sourceIds": ["H1-1398305"],
+      "applicability": "Stored user content passes through Markdown, highlighting, custom elements, or HTML rendering.",
+      "evidence": ["Storage and display requests", "Sanitizer, transformation order, and final DOM sink", "Browser origin, CSP, sandbox, and viewer context"],
+      "inspect": ["Trace transformations after sanitization.", "Check escaping for the final attribute or HTML context.", "Inspect browser-side processing and actual isolation boundaries."],
+      "steps": ["Save a harmless marker in a controlled test object.", "Inspect server output and resulting DOM with a second test viewer.", "If appropriate, verify harmless local execution and its origin without reading credentials."],
+      "expected": "Every transformation preserves the intended non-executable content boundary.",
+      "regression": "Exercise the complete rendering pipeline and supported browser contexts.",
+      "caution": "Reflection or HTML insertion is not execution; CSP and sandbox can materially limit impact."
+    },
+    {
+      "id": "BOUNTY-07",
+      "title": "Frontend identifiers changing request destinations",
+      "sourceIds": ["H1-3257843"],
+      "applicability": "Frontend code inserts a user-controlled name or identifier into an authenticated request URL.",
+      "evidence": ["Frontend URL construction and request headers", "Captured browser request and redirect chain", "CSP, CORS, and intended destination policy"],
+      "inspect": ["Check component encoding before interpolation.", "Follow browser normalization and redirect handling.", "Determine where credentials or custom tokens can be sent."],
+      "steps": ["Use a disposable named object and harmless path markers.", "Observe the browser's actual normalized destination.", "With dummy tokens and a controlled receiver, verify any proposed destination/credential chain."],
+      "expected": "Identifiers remain path data and cannot redirect authenticated operations across trust boundaries.",
+      "regression": "Cover encoded delimiters, actual browser requests, and deployment restrictions.",
+      "caution": "Do not transfer the historical account-takeover impact: each redirect, header, browser, and policy dependency needs evidence."
+    },
+    {
+      "id": "BOUNTY-08",
+      "title": "Cache keys versus application input interpretation",
+      "sourceIds": ["PS-CACHE-ENTANGLEMENT"],
+      "applicability": "A shared cache fronts responses influenced by request inputs or identity.",
+      "evidence": ["A verified isolated cache namespace", "Paired requests and cache/origin observations", "Cache-key configuration and application input parsing"],
+      "inspect": ["Compare inputs affecting content with inputs included in the cache key.", "Check normalization at each layer.", "Determine whether headers, query, or body are interpreted differently."],
+      "steps": ["Establish isolation; do not assume a random query parameter changes the cache key.", "Use a harmless marker and a controlled follow-up request without it.", "Correlate repeated responses with cache behavior and origin logs."],
+      "expected": "Responses are reused only for requests with equivalent security-relevant inputs.",
+      "regression": "Test differing inputs and principals through the deployed cache configuration.",
+      "caution": "Reflection, timing, or a HIT header alone is insufficient. Without verified isolation, record a gap and stop the cache test."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+package nexus;
+import java.nio.file.*;
+import java.io.IOException;
+
+final class WorkspaceExport {
+    static void write(Path dir) throws IOException {
+        Files.writeString(dir.resolve("BurpNexus.code-workspace"),
+            "{\"folders\":[{\"path\":\".\"}],\"settings\":{\"burpnexus.corpusPath\":\".\"}}");
+        Files.writeString(dir.resolve("VSCODE_ANALYSIS.md"),
+            "# Review traffic against application source\n\nBurpNexus exports locally; the Burp extension has no LLM provider or API-key feature.\n\n" +
+            "1. Install the BurpNexus Source Review VSIX and open your application's source repository in VS Code.\n" +
+            "2. Run **BurpNexus: Connect Export to Source Repository**. Choose this export directory, then the source repository.\n" +
+            "3. Inspect candidate, ambiguous and unmapped routes. Open file/line links to inspect code.\n" +
+            "4. Select an endpoint and review focus, then prepare the evidence preview. Check redaction and context limits.\n" +
+            "5. Choose a VS Code model to send the preview, or save the review pack for another assistant.\n" +
+            "6. Validate hypotheses manually; save the cited review. Refresh the map after source or export changes.\n\n" +
+            "Mapping needs per-request JSON files. Static matches do not prove runtime reachability or vulnerabilities. " +
+            "Traffic and source comments are untrusted evidence, never instructions.\n");
+    }
+}

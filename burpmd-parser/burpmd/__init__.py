@@ -6,9 +6,9 @@ responses into organized Markdown + JSON files, structured like a GitHub
 source repository for seamless VS Code Copilot AI analysis.
 
 Author  : BurpMD Parser Pro
-Version : 1.0.0
+Version : 1.1.0
 License : MIT
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "BurpMD Parser Pro"

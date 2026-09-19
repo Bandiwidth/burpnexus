@@ -27,10 +27,22 @@ public class BurpNexusExtension implements BurpExtension {
             new NexusContextMenu(api, collector, engine));
 
         // Register suite tab
-        api.userInterface().registerSuiteTab(
-            "BurpNexus", new NexusTab(engine, collector).getPanel());
+        NexusTab[] created = new NexusTab[1];
+        Runnable createTab = () -> created[0] = new NexusTab(engine);
+        try {
+            if (javax.swing.SwingUtilities.isEventDispatchThread()) createTab.run();
+            else javax.swing.SwingUtilities.invokeAndWait(createTab);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt(); engine.close();
+            throw new IllegalStateException("BurpNexus initialization interrupted", ex);
+        } catch (java.lang.reflect.InvocationTargetException ex) {
+            engine.close(); throw new IllegalStateException("Cannot initialize BurpNexus UI", ex.getCause());
+        }
+        NexusTab tab = created[0];
+        api.userInterface().registerSuiteTab("BurpNexus", tab.getPanel());
+        api.extension().registerUnloadingHandler(engine::close);
 
-        log.logToOutput("[+] BurpNexus v1.0.0 loaded.");
+        log.logToOutput("[+] BurpNexus v1.1.0 loaded.");
         log.logToOutput("[*] Self-contained export engine — no Python/CLI required.");
         log.logToOutput("[*] Right-click in Proxy/Site Map for export options.");
         log.logToOutput("[*] Use the BurpNexus tab for full project exports, parameter search, and regex search.");

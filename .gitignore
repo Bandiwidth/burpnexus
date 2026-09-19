@@ -25,3 +25,27 @@ Nexus_extension/src/REVIEW.md
 
 # Copilot / IDE instructions (local use)
 burpmd-parser/.github/
+
+# Local build and validation products
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.gradle-user/
+bin/
+node_modules/
+*.vsix
+.validation/
+dist/
+
+# Local security evidence and secrets
+*.burp
+*.burp.bak
+*.log
+.env
+.env.*
+!.env.example
+burpnexus-review*.json
+burpnexus-review*.md
+burpnexus-test-plan*.json
+burpnexus-source-map*.json

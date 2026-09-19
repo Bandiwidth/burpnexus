@@ -16,6 +16,7 @@ import hashlib
 import os
 import subprocess
 import time
+import uuid
 import threading
 
 
@@ -326,7 +327,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab):
             url = info.getUrl()
             return self._callbacks.isInScope(url)
         except Exception:
-            return True
+            return False
 
     # ------------------------------------------------------------------
     # Export
@@ -344,6 +345,8 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab):
         if flags is None:
             flags = ["--sitemap", "--md", "--dedupe"]
         clean_flags = [f for f in flags if f != "__SCOPE_ONLY__"]
+        if "__SCOPE_ONLY__" in flags:
+            items = [item for item in items if self._is_in_scope(item)]
         if not items:
             self._printerr("[-] No items to export.")
             return
@@ -353,7 +356,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab):
 
     def _export_thread(self, items, flags):
         try:
-            ts = time.strftime("%Y%m%d_%H%M%S")
+            ts = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
             base = os.path.join(
                 os.path.expanduser("~"), "burpmd_exports", ts)
             xml_path = os.path.join(base, "burpmd_export_" + ts + ".xml")

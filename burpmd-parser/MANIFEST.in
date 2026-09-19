@@ -1,0 +1,3 @@
+include requirements-test.txt
+include tests/test_regression.py
+include tests/integration_rag.py

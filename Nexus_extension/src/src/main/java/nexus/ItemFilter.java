@@ -67,7 +67,7 @@ final class ItemFilter {
         Set<String> seen = new HashSet<>();
         List<NexusItem> result = new ArrayList<>();
         for (NexusItem item : items) {
-            String key = item.sha256 != null ? item.sha256 : "";
+            String key = item.url + "|" + item.sha256 + "|" + NexusItem.sha256Hex(item.reconstructResponseRaw());
             if (key.isEmpty() || !seen.contains(key)) {
                 if (!key.isEmpty()) seen.add(key);
                 result.add(item);
@@ -128,7 +128,7 @@ final class ItemFilter {
             } catch (Exception ignored) {}
         }
         if (sources.isEmpty()) return "session_anon";
-        String joined = String.join("|", sources);
+        String joined = String.join("|", new java.util.TreeSet<>(sources));
         return "session_" + NexusItem.sha256Hex(joined).substring(0, 8);
     }
 
@@ -136,113 +136,11 @@ final class ItemFilter {
     // 6. Secret redaction
     // ====================================================================
 
-    private static final Pattern SECRET_KEY_PAT = Pattern.compile(
-        "(\"?(?:password|passwd|token|access_token|refresh_token|id_token"
-        + "|secret|client_secret|api[_\\-]?key|authorization|jwt|session"
-        + "|session_id|sessionid|csrf|xsrf|private_key|signing_key"
-        + "|bearer|credential|ssn|credit_card)"
-        + "\"?\\s*[:=]\\s*\")([^\"]*)(\")",
-        Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern AUTH_HEADER_PAT = Pattern.compile(
-        "^(authorization|x-api-key|x-auth-token|x-csrf-token"
-        + "|x-xsrf-token|proxy-authorization)\\s*:\\s*(.+)$",
-        Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-
-    private static final Pattern COOKIE_HEADER_PAT = Pattern.compile(
-        "^(cookie|set-cookie)\\s*:\\s*(.+)$",
-        Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-
-    private static final Pattern QUERY_SECRET_PAT = Pattern.compile(
-        "([?&](?:token|auth|apikey|api_key|session|password"
-        + "|access_token|refresh_token|secret|key|csrf)=)([^&\\s]+)",
-        Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern BEARER_INLINE_PAT = Pattern.compile(
-        "(Bearer\\s+)([A-Za-z0-9\\-_.]{8,})", Pattern.CASE_INSENSITIVE);
-
-    private static final Set<String> SENSITIVE_HEADER_NAMES = Set.of(
-        "authorization", "x-api-key", "x-auth-token", "x-csrf-token",
-        "x-xsrf-token", "proxy-authorization");
-
-    private static final Set<String> SENSITIVE_HEADER_SUBSTRINGS = Set.of(
-        "token", "secret", "api-key", "apikey", "auth");
-
     static void redactSecrets(List<NexusItem> items) {
         for (NexusItem item : items) {
-            item.requestHeaders  = redactHeaders(item.requestHeaders);
-            item.responseHeaders = redactHeaders(item.responseHeaders);
-            item.requestBody     = redactText(item.requestBody);
-            item.responseBody    = redactText(item.responseBody);
+            Redactor.item(item);
+            item.sha256 = NexusItem.sha256Hex(item.reconstructRequestRaw());
         }
-    }
-
-    private static Map<String, String> redactHeaders(Map<String, String> headers) {
-        if (headers == null || headers.isEmpty()) return headers;
-        Map<String, String> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : headers.entrySet()) {
-            String k = e.getKey();
-            String v = e.getValue() != null ? e.getValue() : "";
-            String kLow = k.toLowerCase(Locale.ROOT);
-
-            if ("cookie".equals(kLow) || "set-cookie".equals(kLow)) {
-                out.put(k, maskCookieLine(v));
-            } else if (SENSITIVE_HEADER_NAMES.contains(kLow)
-                    || SENSITIVE_HEADER_SUBSTRINGS.stream().anyMatch(kLow::contains)) {
-                out.put(k, maskTokenish(v));
-            } else {
-                out.put(k, v);
-            }
-        }
-        return out;
-    }
-
-    private static String redactText(String text) {
-        if (text == null || text.isEmpty()) return text;
-        String r = text;
-        r = SECRET_KEY_PAT.matcher(r).replaceAll("$1***REDACTED***$3");
-        r = AUTH_HEADER_PAT.matcher(r).replaceAll("$1: ***REDACTED***");
-        r = replaceCookieHeaders(r);
-        r = QUERY_SECRET_PAT.matcher(r).replaceAll("$1***REDACTED***");
-        r = BEARER_INLINE_PAT.matcher(r).replaceAll("$1***REDACTED***");
-        return r;
-    }
-
-    private static String replaceCookieHeaders(String text) {
-        Matcher m = COOKIE_HEADER_PAT.matcher(text);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            m.appendReplacement(sb, Matcher.quoteReplacement(
-                m.group(1) + ": " + maskCookieLine(m.group(2))));
-        }
-        m.appendTail(sb);
-        return sb.toString();
-    }
-
-    private static String maskCookieLine(String cookieLine) {
-        if (cookieLine == null || cookieLine.isEmpty()) return cookieLine;
-        String[] parts = cookieLine.split(";");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            if (i > 0) sb.append("; ");
-            String p = parts[i].trim();
-            int eq = p.indexOf('=');
-            if (eq > 0) {
-                sb.append(p, 0, eq + 1).append("***REDACTED***");
-            } else {
-                sb.append(p);
-            }
-        }
-        return sb.toString();
-    }
-
-    private static String maskTokenish(String value) {
-        if (value == null || value.isEmpty()) return value;
-        if (value.contains(" ")) {
-            int sp = value.indexOf(' ');
-            return value.substring(0, sp) + " ***REDACTED***";
-        }
-        return "***REDACTED***";
     }
 
     // ====================================================================
@@ -318,7 +216,7 @@ final class ItemFilter {
         }
 
         // 6. URL path segments
-        if (item.path != null && !item.path.isEmpty()) {
+        if ((name == null || name.isEmpty()) && item.path != null && !item.path.isEmpty()) {
             for (String seg : item.path.split("/")) {
                 if (!seg.isEmpty() && valueMatch(seg, value, exact)) return true;
             }
@@ -348,22 +246,20 @@ final class ItemFilter {
         return hay.toLowerCase(Locale.ROOT).contains(needle.toLowerCase(Locale.ROOT));
     }
 
-    /**
-     * Minimal JSON key/value scanner (no full parser needed — we just look
-     * for quoted keys and their adjacent values).
-     */
-    private static boolean jsonContainsParam(String json, String name,
-                                              String value, boolean exact) {
-        if (json == null) return false;
-        // Simple regex-based scan for "key": "value" or "key": number
-        Pattern kvPat = Pattern.compile(
-            "\"([^\"]+)\"\\s*:\\s*(?:\"([^\"]*)\"|(-?\\d+(?:\\.\\d+)?)|true|false|null)");
-        Matcher m = kvPat.matcher(json);
-        while (m.find()) {
-            String k = m.group(1);
-            String v = m.group(2) != null ? m.group(2) : (m.group(3) != null ? m.group(3) : "");
-            if (paramMatch(k, v, name, value, exact)) return true;
+    private static boolean jsonContainsParam(String json, String name, String value, boolean exact) {
+        try { return jsonParam(com.google.gson.JsonParser.parseString(json), name, value, exact); }
+        catch (com.google.gson.JsonParseException | IllegalStateException ex) { return false; }
+    }
+
+    private static boolean jsonParam(com.google.gson.JsonElement element, String name, String value, boolean exact) {
+        if (element.isJsonObject()) for (var entry : element.getAsJsonObject().entrySet()) {
+            var child = entry.getValue();
+            if (child.isJsonPrimitive() || child.isJsonNull()) {
+                String text = child.isJsonNull() ? "null" : child.getAsString();
+                if (paramMatch(entry.getKey(), text, name, value, exact)) return true;
+            } else if (jsonParam(child, name, value, exact)) return true;
         }
+        if (element.isJsonArray()) for (var child : element.getAsJsonArray()) if (jsonParam(child, name, value, exact)) return true;
         return false;
     }
 
@@ -379,7 +275,7 @@ final class ItemFilter {
         try {
             compiled = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
         } catch (Exception e) {
-            return List.of(); // invalid regex
+            throw new IllegalArgumentException("Invalid regex pattern", e);
         }
 
         List<NexusItem> result = new ArrayList<>();
@@ -427,6 +323,8 @@ final class ItemFilter {
         }
         java.time.ZonedDateTime from = parseFlexibleTime(fromTime);
         java.time.ZonedDateTime to   = parseFlexibleTime(toTime);
+        if (to != null && toTime.strip().matches("\\d{4}-\\d{2}-\\d{2}")) to = to.plusDays(1).minusNanos(1);
+        if (from != null && to != null && from.isAfter(to)) throw new IllegalArgumentException("From time must precede To time");
         List<NexusItem> result = new ArrayList<>();
         for (NexusItem item : items) {
             if (item.timeParsed == null) {
@@ -455,7 +353,7 @@ final class ItemFilter {
             java.time.LocalDate ld = java.time.LocalDate.parse(s);
             return ld.atStartOfDay(java.time.ZoneId.systemDefault());
         } catch (Exception ignored) {}
-        return null;
+        throw new IllegalArgumentException("Invalid time: " + input);
     }
 
     // ====================================================================

@@ -13,7 +13,7 @@ if "%~1"=="" (
     exit /b 1
 )
 
-set XML_FILE=%~1
+set "XML_FILE=%~1"
 
 if not exist "%XML_FILE%" (
     echo [ERROR] XML file not found: %XML_FILE%
@@ -24,7 +24,7 @@ REM --- Output directory ---
 if "%~2"=="" (
     set OUTPUT_DIR=output\burpmd_%date:~-4%%date:~4,2%%date:~7,2%
 ) else (
-    set OUTPUT_DIR=%~2
+    set "OUTPUT_DIR=%~2"
 )
 
 REM --- Activate venv if present ---
@@ -45,6 +45,7 @@ if errorlevel 1 (
 )
 
 echo.
+if errorlevel 1 exit /b 1
 echo === Export Complete ===
 echo Output: %OUTPUT_DIR%
 echo.

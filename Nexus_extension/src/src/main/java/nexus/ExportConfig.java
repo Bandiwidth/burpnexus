@@ -32,6 +32,8 @@ final class ExportConfig {
     final boolean autoFindings;
     final boolean paramIndex;
     final boolean aiPrompts;
+    final boolean generateFuzz;
+    final boolean generateNuclei;
 
     // ---- scope ---------------------------------------------------------
     final boolean scopeOnly;
@@ -64,6 +66,8 @@ final class ExportConfig {
         this.autoFindings     = b.autoFindings;
         this.paramIndex       = b.paramIndex;
         this.aiPrompts        = b.aiPrompts;
+        this.generateFuzz     = b.generateFuzz;
+        this.generateNuclei   = b.generateNuclei;
         this.scopeOnly        = b.scopeOnly;
         this.paramSearchName  = b.paramSearchName;
         this.paramSearchValue = b.paramSearchValue;
@@ -74,11 +78,11 @@ final class ExportConfig {
     }
 
     boolean hasFullAnalysis() {
-        return autoFindings && paramIndex && aiPrompts;
+        return autoFindings && paramIndex && aiPrompts && generateFuzz && generateNuclei;
     }
 
     boolean hasAnyAnalysis() {
-        return autoFindings || paramIndex || aiPrompts;
+        return autoFindings || paramIndex || aiPrompts || generateFuzz || generateNuclei;
     }
 
     boolean hasParamSearch() {
@@ -110,6 +114,8 @@ final class ExportConfig {
         boolean     autoFindings     = false;
         boolean     paramIndex       = false;
         boolean     aiPrompts        = false;
+        boolean     generateFuzz     = false;
+        boolean     generateNuclei   = false;
         boolean     scopeOnly        = false;
         String      paramSearchName  = "";
         String      paramSearchValue = "";
@@ -131,7 +137,9 @@ final class ExportConfig {
         Builder autoFindings(boolean v)        { this.autoFindings = v; return this; }
         Builder paramIndex(boolean v)          { this.paramIndex = v; return this; }
         Builder aiPrompts(boolean v)           { this.aiPrompts = v; return this; }
-        Builder fullAnalysis(boolean v)        { this.autoFindings = v; this.paramIndex = v; this.aiPrompts = v; return this; }
+        Builder generateFuzz(boolean v)        { this.generateFuzz = v; return this; }
+        Builder generateNuclei(boolean v)      { this.generateNuclei = v; return this; }
+        Builder fullAnalysis(boolean v)        { this.autoFindings = v; this.paramIndex = v; this.aiPrompts = v; this.generateFuzz = v; this.generateNuclei = v; return this; }
         Builder scopeOnly(boolean v)           { this.scopeOnly = v; return this; }
         Builder paramSearchName(String v)      { this.paramSearchName = v == null ? "" : v; return this; }
         Builder paramSearchValue(String v)     { this.paramSearchValue = v == null ? "" : v; return this; }

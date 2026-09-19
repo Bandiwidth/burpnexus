@@ -43,12 +43,21 @@ from .parser import BurpExport, BurpItem, TOOL_UNKNOWN
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _portable_segment(value):
+    if value.split(".")[0].upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}:
+        value = "_" + value
+    if len(value) > 64:
+        import hashlib
+        value = value[:48] + "_" + hashlib.sha256(value.encode()).hexdigest()[:12]
+    return value
+
+
 def _sanitise_dirname(name: str) -> str:
     """Convert a hostname or tool name into a safe directory name."""
     name = name.strip().lower()
     name = re.sub(r"[^\w\-.]", "_", name)
     name = re.sub(r"_+", "_", name).strip("_.")
-    return name or "unknown"
+    return _portable_segment(name or "unknown")
 
 
 def _sanitise_path_segment(segment: str) -> str:
@@ -59,7 +68,7 @@ def _sanitise_path_segment(segment: str) -> str:
     # Replace unsafe chars
     segment = re.sub(r"[^\w\-.]", "_", segment)
     segment = re.sub(r"_+", "_", segment).strip("_.")
-    return segment or "_"
+    return _portable_segment(segment or "_")
 
 
 def _url_to_dir_path(url: str, path_field: str) -> List[str]:
@@ -250,6 +259,9 @@ class BurpMDWriter:
         """Write the .json and (optionally) .md files for one item."""
         target_dir = self._item_dir(item)
         slug = item.slug or f"{item.index:04d}_item"
+        if Path(slug).name != slug or "/" in slug or "\\" in slug:
+            raise ValueError("Unsafe item slug")
+        (target_dir / (slug + ".json")).resolve().relative_to(self.output_dir.resolve())
 
         # --- JSON (default) ---
         if self.include_json:
@@ -265,7 +277,7 @@ class BurpMDWriter:
                 self._skipped += 1
                 if self.verbose:
                     print(f"  [!]  Failed to write JSON for item {item.index}: {exc}", file=sys.stderr)
-                return
+                raise
 
         # --- Markdown (optional) ---
         if self.include_md:
@@ -281,6 +293,7 @@ class BurpMDWriter:
                 self._skipped += 1
                 if self.verbose:
                     print(f"  [!]  Failed to write MD for item {item.index}: {exc}", file=sys.stderr)
+                raise
 
     # ------------------------------------------------------------------
     # Internal — Index files
@@ -313,7 +326,8 @@ class BurpMDWriter:
         ]
         for item in items:
             slug = item.slug or f"{item.index:04d}_item"
-            link = f"[{slug}.json](./{slug}.json)"
+            ext = "json" if self.include_json else "md"
+            link = f"[{slug}.{ext}](./{slug}.{ext})"
             lines.append(
                 f"| {item.index} "
                 f"| `{item.method or '?'}` "
@@ -347,7 +361,8 @@ class BurpMDWriter:
             lines.append(f"| - | ------ | ---- | ------ | ---- | ---- |")
             for item in host_items:
                 slug = item.slug or f"{item.index:04d}_item"
-                link = f"[{slug}.json](./{host_slug}/{slug}.json)"
+                ext = "json" if self.include_json else "md"
+                link = f"[{slug}.{ext}](./{host_slug}/{slug}.{ext})"
                 lines.append(
                     f"| {item.index} "
                     f"| `{item.method or '?'}` "
@@ -381,7 +396,8 @@ class BurpMDWriter:
             lines.append("| - | ------ | ---- | ------ | ---- | ---- |")
             for item in host_items:
                 slug = item.slug or f"{item.index:04d}_item"
-                link = f"[{slug}.json](../{host_slug}/{tool_slug}/{slug}.json)"
+                ext = "json" if self.include_json else "md"
+                link = f"[{slug}.{ext}](../{host_slug}/{tool_slug}/{slug}.{ext})"
                 lines.append(
                     f"| {item.index} "
                     f"| `{item.method or '?'}` "
@@ -415,7 +431,8 @@ class BurpMDWriter:
             lines.append("| - | ------ | ---- | ------ | ---- | ---- | ---- |")
             for item in sess_items:
                 slug = item.slug or f"{item.index:04d}_item"
-                link = f"[{slug}.json](../{sess_slug}/{tool_slug}/{slug}.json)"
+                ext = "json" if self.include_json else "md"
+                link = f"[{slug}.{ext}](../{sess_slug}/{tool_slug}/{slug}.{ext})"
                 lines.append(
                     f"| {item.index} "
                     f"| `{item.method or '?'}` "
@@ -553,7 +570,7 @@ class BurpMDWriter:
         for item in export.items:
             method = (item.method or "UNKNOWN").upper()
             path = item.path or "/"
-            key = "{0} {1}".format(method, path)
+            key = "{0} {1}://{2}:{3}{4}".format(method, item.protocol, item.host, item.port, path)
             endpoints[key] = endpoints.get(key, 0) + 1
             methods[method] = methods.get(method, 0) + 1
             status = item.status or "unknown"

@@ -42,7 +42,7 @@ final class NexusCollector {
 
     // ---- deep-crawl: collect all items for given hosts -----------------
 
-    List<NexusItem> collectForHosts(List<String> hosts) {
+    List<NexusItem> collectForHosts(List<String> hosts, boolean scopeOnly) {
         if (hosts == null || hosts.isEmpty()) return List.of();
         Set<String> hostSet = new HashSet<>();
         for (String h : hosts) hostSet.add(h.toLowerCase(Locale.ROOT));
@@ -53,24 +53,25 @@ final class NexusCollector {
 
         // Proxy History
         try {
+            if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Export cancelled");
             for (ProxyHttpRequestResponse proxyItem : api.proxy().history()) {
                 try {
                     HttpRequest req = proxyItem.request();
                     if (req == null || req.httpService() == null) continue;
                     if (!hostSet.contains(req.httpService().host().toLowerCase(Locale.ROOT))) continue;
+                    if (scopeOnly && !isInScope(req)) continue;
 
-                    String key = sha256(req.toByteArray().getBytes());
-                    if (seen.containsKey(key)) continue;
+                    String key = req.url() + "|" + sha256(req.toByteArray().getBytes()) + "|" + sha256((proxyItem.response() == null ? new byte[0] : proxyItem.response().toByteArray().getBytes()));
                     seen.put(key, Boolean.TRUE);
 
                     Instant time = extractTime(proxyItem);
                     NexusItem item = buildItem(counter++, req, proxyItem.response(),
                         NexusItem.TOOL_PROXY, time);
                     merged.add(item);
-                } catch (Exception ignored) {}
+                } catch (Exception ex) { throw new IllegalStateException("Failed to collect a traffic item", ex); }
             }
         } catch (Exception e) {
-            api.logging().logToError("[!] Error reading proxy history: " + e.getMessage());
+            throw new IllegalStateException("Failed to read proxy history", e);
         }
 
         // Site Map
@@ -80,18 +81,19 @@ final class NexusCollector {
                     HttpRequest req = siteItem.request();
                     if (req == null || req.httpService() == null) continue;
                     if (!hostSet.contains(req.httpService().host().toLowerCase(Locale.ROOT))) continue;
+                    if (scopeOnly && !isInScope(req)) continue;
 
-                    String key = sha256(req.toByteArray().getBytes());
+                    String key = req.url() + "|" + sha256(req.toByteArray().getBytes()) + "|" + sha256(siteItem.response() == null ? new byte[0] : siteItem.response().toByteArray().getBytes());
                     if (seen.containsKey(key)) continue;
                     seen.put(key, Boolean.TRUE);
 
                     NexusItem item = buildItem(counter++, req, siteItem.response(),
                         NexusItem.TOOL_TARGET, null);
                     merged.add(item);
-                } catch (Exception ignored) {}
+                } catch (Exception ex) { throw new IllegalStateException("Failed to collect a traffic item", ex); }
             }
         } catch (Exception e) {
-            api.logging().logToError("[!] Error reading site map: " + e.getMessage());
+            throw new IllegalStateException("Failed to read site map", e);
         }
 
         api.logging().logToOutput(String.format(
@@ -110,23 +112,23 @@ final class NexusCollector {
 
         // Proxy History
         try {
+            if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Export cancelled");
             for (ProxyHttpRequestResponse proxyItem : api.proxy().history()) {
                 try {
                     HttpRequest req = proxyItem.request();
                     if (req == null) continue;
                     if (scopeOnly && !isInScope(req)) continue;
 
-                    String key = sha256(req.toByteArray().getBytes());
-                    if (seen.containsKey(key)) continue;
+                    String key = req.url() + "|" + sha256(req.toByteArray().getBytes()) + "|" + sha256(proxyItem.response() == null ? new byte[0] : proxyItem.response().toByteArray().getBytes());
                     seen.put(key, Boolean.TRUE);
 
                     Instant time = extractTime(proxyItem);
                     NexusItem item = buildItem(counter++, req, proxyItem.response(),
                         NexusItem.TOOL_PROXY, time);
                     merged.add(item);
-                } catch (Exception ignored) {}
+                } catch (Exception ex) { throw new IllegalStateException("Failed to collect a traffic item", ex); }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ex) { throw new IllegalStateException("Failed to read proxy history", ex); }
 
         // Site Map
         try {
@@ -136,16 +138,16 @@ final class NexusCollector {
                     if (req == null) continue;
                     if (scopeOnly && !isInScope(req)) continue;
 
-                    String key = sha256(req.toByteArray().getBytes());
+                    String key = req.url() + "|" + sha256(req.toByteArray().getBytes()) + "|" + sha256(siteItem.response() == null ? new byte[0] : siteItem.response().toByteArray().getBytes());
                     if (seen.containsKey(key)) continue;
                     seen.put(key, Boolean.TRUE);
 
                     NexusItem item = buildItem(counter++, req, siteItem.response(),
                         NexusItem.TOOL_TARGET, null);
                     merged.add(item);
-                } catch (Exception ignored) {}
+                } catch (Exception ex) { throw new IllegalStateException("Failed to collect a traffic item", ex); }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ex) { throw new IllegalStateException("Failed to read site map", ex); }
 
         return merged;
     }
@@ -171,7 +173,7 @@ final class NexusCollector {
         try {
             // Montoya API: ProxyHttpRequestResponse.time() returns java.time.ZonedDateTime (2024+)
             // or String in older versions. We handle both gracefully.
-            Object timeObj = proxyItem.getClass().getMethod("time").invoke(proxyItem);
+            Object timeObj = ProxyHttpRequestResponse.class.getMethod("time").invoke(proxyItem);
             if (timeObj instanceof java.time.ZonedDateTime) {
                 return ((java.time.ZonedDateTime) timeObj).toInstant();
             } else if (timeObj instanceof String) {
@@ -180,7 +182,7 @@ final class NexusCollector {
         } catch (Exception ignored) {
             // Fallback if the time() method is not available in this API version
         }
-        return Instant.now();
+        return null;
     }
 
     // ---- helpers -------------------------------------------------------
@@ -189,7 +191,7 @@ final class NexusCollector {
         try {
             return api.scope().isInScope(request.url());
         } catch (Exception e) {
-            return true; // fail-open, same as old extension
+            return false; // scope lookup failure excludes the item
         }
     }
 

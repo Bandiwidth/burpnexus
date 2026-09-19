@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "total_items": 3,
+    "unique_hosts": 1,
+    "unique_tools": 1,
+    "unique_endpoints": 3,
+    "unique_sessions": 2
+  },
+  "top_endpoints": [
+    { "endpoint": "GET /rest/products/search", "count": 1 },
+    { "endpoint": "GET /api/Products/1", "count": 1 },
+    { "endpoint": "POST /rest/user/login", "count": 1 }
+  ],
+  "methods": { "GET": 2, "POST": 1 },
+  "statuses": { "200": 3 },
+  "auth_headers_observed": ["Authorization"],
+  "security_headers_observed": [],
+  "sensitive_query_params_observed": [],
+  "session_buckets": { "juice-anonymous": 2, "juice-test-user": 1 }
+}

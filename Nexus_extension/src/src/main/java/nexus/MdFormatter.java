@@ -158,9 +158,12 @@ final class MdFormatter {
     private static void codeBlock(StringBuilder sb, String content, String lang, int max) {
         boolean truncated = content.length() > max;
         String text = truncated ? content.substring(0, max) : content;
-        sb.append("```").append(lang).append('\n');
+        int length = 3; java.util.regex.Matcher ticks = java.util.regex.Pattern.compile("`+").matcher(text);
+        while (ticks.find()) length = Math.max(length, ticks.group().length() + 1);
+        String fence = "`".repeat(length);
+        sb.append(fence).append(lang).append('\n');
         sb.append(text).append('\n');
-        sb.append("```\n");
+        sb.append(fence).append("\n");
         if (truncated) {
             sb.append("> **[Truncated]** Content exceeds display limit. See JSON block for full data.\n");
         }
@@ -181,7 +184,7 @@ final class MdFormatter {
 
     private static String escapeMd(String text) {
         if (text == null) return "";
-        return text.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("`", "&#96;").replace("|", "\\|").replace("\n", " ").replace("\r", "");
     }
 
     private static String safe(String val, String fallback) {

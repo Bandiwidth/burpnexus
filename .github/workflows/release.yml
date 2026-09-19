@@ -1,0 +1,80 @@
+name: Build GitHub release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Verify suite tag matches VSIX version
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./vscode-extension/package.json').version")"
+          test "$GITHUB_REF_NAME" = "$expected" || {
+            echo "Tag $GITHUB_REF_NAME does not match VSIX version $expected" >&2
+            exit 1
+          }
+
+      - name: Test and build Python CLI
+        run: |
+          python -m pip install ./burpmd-parser -r burpmd-parser/requirements-test.txt
+          python -m unittest discover -s burpmd-parser/tests -p "test_*.py" -v
+          python -m build burpmd-parser
+
+      - name: Test and build Burp JAR
+        working-directory: Nexus_extension/src
+        run: ./gradlew test jar --no-daemon
+
+      - name: Test and build VSIX
+        working-directory: vscode-extension
+        run: |
+          npm ci
+          npm test
+          npm audit --audit-level=high
+          npm run package
+          node scripts/validate-contract.js ../Nexus_extension/src/build/release/contract-export
+
+      - name: Assemble and checksum release assets
+        shell: bash
+        run: |
+          mkdir release-assets
+          cp Nexus_extension/src/build/release/libs/burpnexus-1.1.0.jar release-assets/
+          cp vscode-extension/burpnexus-1.1.0.vsix release-assets/
+          cp burpmd-parser/dist/* release-assets/
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: burpnexus-${{ github.ref_name }}
+          path: release-assets/
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes --title "BurpNexus $GITHUB_REF_NAME"

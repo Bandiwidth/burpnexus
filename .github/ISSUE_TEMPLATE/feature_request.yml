@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a focused improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Tester or developer problem
+      description: Describe the workflow and concrete limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Desired behavior
+      description: Explain the outcome, including scope and any automation boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Example using synthetic data
+      description: Do not include customer traffic, credentials, or private source.
+  - type: checkboxes
+    id: execution
+    attributes:
+      label: Request generation
+      options:
+        - label: This proposal would send or replay HTTP requests.
+        - label: This proposal would send source/traffic to an external model or service.

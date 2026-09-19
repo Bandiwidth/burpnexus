@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "method": "GET",
+    "url": "http://localhost:3000/api/Products/1",
+    "path": "/api/Products/1",
+    "host": "localhost:3000",
+    "status": 200,
+    "tool": "proxy",
+    "session": "juice-anonymous"
+  },
+  "request": {
+    "headers": {
+      "Accept": "application/json"
+    },
+    "body": ""
+  },
+  "response": {
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"id\":1,\"name\":\"Apple Juice\",\"description\":\"Test fixture response\"}"
+  }
+}

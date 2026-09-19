@@ -3,7 +3,6 @@ package nexus;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
-import java.util.List;
 
 /**
  * Polished suite tab with titled sections, radio groups, checkboxes,
@@ -13,7 +12,6 @@ import java.util.List;
 final class NexusTab {
 
     private final NexusEngine engine;
-    private final NexusCollector collector;
     private final JPanel panel;
 
     // ---- output mode radios --------------------------------------------
@@ -36,7 +34,9 @@ final class NexusTab {
     private final JCheckBox cbFullAnalysis = new JCheckBox("Full analysis");
     private final JCheckBox cbFindings     = new JCheckBox("Auto findings");
     private final JCheckBox cbParamIndex   = new JCheckBox("Param index");
-    private final JCheckBox cbAiPrompts    = new JCheckBox("AI prompts");
+    private final JCheckBox cbAiPrompts    = new JCheckBox("VS Code review guide");
+    private final JCheckBox cbFuzzManifest = new JCheckBox("Fuzz manifest");
+    private final JCheckBox cbNucleiTpls   = new JCheckBox("Nuclei templates");
 
     // ---- filter text fields --------------------------------------------
     private final JTextField tfTools  = new JTextField(14);
@@ -72,9 +72,8 @@ final class NexusTab {
     // ---- concurrency guard ---------------------------------------------
     private volatile boolean exporting = false;
 
-    NexusTab(NexusEngine engine, NexusCollector collector) {
+    NexusTab(NexusEngine engine) {
         this.engine    = engine;
-        this.collector = collector;
         this.panel     = buildUi();
     }
 
@@ -92,7 +91,7 @@ final class NexusTab {
         JPanel header = new JPanel(new BorderLayout());
         JLabel title = new JLabel("BURPNEXUS");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
-        JLabel subtitle = new JLabel("Self-contained security corpus exporter for AI analysis");
+        JLabel subtitle = new JLabel("Local traffic export — connect to source code in VS Code");
         subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, 12f));
         header.add(title, BorderLayout.NORTH);
         header.add(subtitle, BorderLayout.SOUTH);
@@ -160,6 +159,8 @@ final class NexusTab {
             cbFindings.setSelected(sel);
             cbParamIndex.setSelected(sel);
             cbAiPrompts.setSelected(sel);
+            cbFuzzManifest.setSelected(sel);
+            cbNucleiTpls.setSelected(sel);
         });
 
         // wire up md-only exclusivity
@@ -230,7 +231,7 @@ final class NexusTab {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setBorder(titledBorder("OPTIONS"));
-        for (JCheckBox cb : new JCheckBox[]{cbDedupe, cbIncludeMd, cbMdOnly, cbRedact, cbFullAnalysis, cbFindings, cbParamIndex, cbAiPrompts}) {
+        for (JCheckBox cb : new JCheckBox[]{cbDedupe, cbIncludeMd, cbMdOnly, cbRedact, cbFullAnalysis, cbFindings, cbParamIndex, cbAiPrompts, cbFuzzManifest, cbNucleiTpls}) {
             p.add(cb);
         }
         return p;
@@ -293,7 +294,7 @@ final class NexusTab {
 
     private JPanel buildRegexSearchPanel() {
         JPanel p = new JPanel(new GridBagLayout());
-        p.setBorder(titledBorder("REGEX CONTENT SEARCH"));
+        p.setBorder(titledBorder("REGEX EXPORT"));
         GridBagConstraints g = new GridBagConstraints();
         g.insets = new Insets(2, 4, 2, 4);
         g.anchor = GridBagConstraints.WEST;
@@ -371,7 +372,7 @@ final class NexusTab {
         exporting = true;
         btnExport.setEnabled(false);
         updateStatus("Starting export...");
-        task.run();
+        try { task.run(); } catch (RuntimeException ex) { exportDone("Error: " + ex.getMessage()); }
     }
 
     private void exportDone(String msg) {
@@ -403,6 +404,8 @@ final class NexusTab {
                 .redactSecrets(presetCfg.redactSecrets)
                 .autoFindings(presetCfg.autoFindings)
                 .paramIndex(presetCfg.paramIndex)
+                .generateFuzz(presetCfg.generateFuzz)
+                .generateNuclei(presetCfg.generateNuclei)
                 .aiPrompts(presetCfg.aiPrompts)
                 .scopeOnly(scopeOnly)
                 .build();
@@ -489,6 +492,8 @@ final class NexusTab {
             .autoFindings(cbFindings.isSelected() || cbFullAnalysis.isSelected())
             .paramIndex(cbParamIndex.isSelected() || cbFullAnalysis.isSelected())
             .aiPrompts(cbAiPrompts.isSelected() || cbFullAnalysis.isSelected())
+            .generateFuzz(cbFuzzManifest.isSelected() || cbFullAnalysis.isSelected())
+            .generateNuclei(cbNucleiTpls.isSelected() || cbFullAnalysis.isSelected())
             .scopeOnly(rbScopeOnly.isSelected())
             .build();
     }

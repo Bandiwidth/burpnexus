@@ -1,89 +1,126 @@
 # BurpNexus
 
-Self-contained Burp Suite exporter and BurpMD CLI. The extension runs entirely inside Burp and writes to your local disk; the CLI parses Burp XML exports into the same sitemap-style corpus from the command line.
+BurpNexus connects captured Burp Suite traffic to application source code for evidence-based security review. The Burp extension exports normalized traffic and deterministic review artifacts. The VS Code extension maps captured endpoints to candidate routes, builds bounded source/traffic evidence, and produces manual test plans or an inspectable prompt for a model. The optional Python CLI imports Burp XML and creates additional offline artifacts.
 
----
+> **Release status:** 1.1.0 is a tested release candidate. Unit, contract, package, isolated installation, and webview checks pass. The same VS Code runtime previously passed its extension-host check; the final 1.1.0 repeat is temporarily blocked by the local VS Code updater mutex. A live Burp load/export/unload check and a real model-provider quality assessment still need to be completed before production sign-off. See [REVIEW_REPORT.md](REVIEW_REPORT.md).
 
-## Extension (BurpNexus)
+Use BurpNexus only on applications you are authorized to test. Generated findings, fuzz cases, and Nuclei templates are review candidates; they are not confirmed vulnerabilities and are never executed automatically.
 
-**What it does:** Exports Burp Proxy History and Site Map traffic into a sitemap-style directory:
+## Components and versions
 
-- **Per-request JSON** (and optional Markdown) — one file per request/response pair
-- **attack-surface-index.json** — endpoint summary, methods, status codes, auth headers
-- **param-index.json** — all parameters (query, body, JSON, cookies, headers)
-- **SECURITY_FINDINGS.md** + **security-findings.json** — automated pattern-based findings
-- **AI_ANALYSIS_PROMPTS.md** — prompts tailored to the export
-- **README.md** — export summary and stats
+The suite components are versioned independently in this release:
 
-**Requirements:** Burp Suite Professional or Community (Montoya extensions). No Python or CLI needed for the extension.
+| Component | Version | Purpose |
+| --- | --- | --- |
+| VS Code extension | 1.1.0 | Traffic-to-source mapping, review playbooks, model/external-assistant handoff |
+| Burp Java extension | 1.1.0 | Traffic export, filtering, passive findings, fuzz manifests, Nuclei review templates |
+| Python CLI (`burpmd-parser`) | 1.1.0 | Optional Burp XML import and extended offline artifact generation |
 
-**Install:** Load `Nexus_extension/burpnexus-1.0.0.jar` in Burp: **Extensions** → **Add** → **Extension type: Java** → **Select file**. The **BurpNexus** tab and right-click menu appear.
+The Burp JAR contains no LLM client, API-key field, provider selection, or direct model request. A model is optional in VS Code; mapping and manual plans work without one.
 
-**Output location:** Timestamped subfolders under your user home:
+## Quick start
 
-| OS      | Base folder |
-|--------|-------------|
-| Windows | `C:\Users\<YourUsername>\burpnexus_exports\` |
-| macOS   | `/Users/<YourUsername>/burpnexus_exports/` |
-| Linux   | `/home/<YourUsername>/burpnexus_exports/` |
+### 1. Install
 
-**Features:**
+Download the JAR and VSIX from a GitHub release, or build them using [INSTALLATION.md](docs/INSTALLATION.md).
 
-- **Main EXPORT:** Set output mode (Sitemap), scope (All traffic / In-scope only), options (Deduplicate, Include Markdown, Redact secrets, Full analysis), optional time range (From/To) and filters (Tools, Status). Click **EXPORT**; runs in background.
-- **Export presets:** One-click presets (e.g. Full AI Analysis, JSON Only, Triage 401/403/5xx).
-- **Parameter search:** Name/value, Contains/Exact, JSON or MD → **Search & Export** (only matching items).
-- **Regex content search:** Pattern (Java regex), Request/Response/Both → **Search & Export**.
-- **Right-click:** With items selected — export those hosts only (all traffic for those hosts). With nothing selected — export entire project. Submenus for presets (AI Analysis, JSON only, Triage, Redacted, etc.).
+1. In Burp Suite, open **Extensions → Installed → Add**, select **Java**, and load `burpnexus-1.1.0.jar`.
+2. In desktop VS Code 1.95 or newer, run **Extensions: Install from VSIX...** and select `burpnexus-1.1.0.vsix`.
+3. Open the target application's source repository in a trusted local VS Code workspace.
 
-**Privacy:** No network calls; no telemetry; output only to `~/burpnexus_exports/`. Safe for air-gapped environments.
+Python is not required for the normal Burp JSON → VS Code workflow.
 
+### 2. Capture and export
 
+Browse the authorized target through Burp using the roles and workflows you need to assess. In the **BurpNexus** tab:
 
----
+1. Select **In-scope only**.
+2. Enable **Full analysis**.
+3. Enable **Redact secrets**.
+4. Keep per-request JSON enabled; do not use **Markdown only** for VS Code mapping.
+5. Click **EXPORT** and retain the generated directory containing `attack-surface-index.json`.
 
-## CLI (BurpMD parser)
+Redaction is best effort. Review exports before sharing them with any model or third party.
 
-**What it does:** Python CLI that parses Burp Suite XML exports into the same sitemap-style corpus (per-request JSON/Markdown, attack-surface index, param index, security findings, AI prompts). Use when you already have XML exports and prefer the command line.
+### 3. Connect traffic to source
 
-**Install:** From the `burpmd-parser/` folder:
+In VS Code:
 
-```bash
-cd burpmd-parser
-pip install .
-# or on Windows: .\install.ps1 or install.bat
+1. Press **Ctrl+Shift+P**.
+2. Run **BurpNexus: Connect Export to Source Repository**.
+3. Select the BurpNexus export directory first.
+4. Select the application source repository second.
+5. Run **BurpNexus: Open AI Analysis**.
+
+The command name is historical: the panel also supports mapping, source navigation, public disclosure lessons, and offline manual plans without AI.
+
+### 4. Review an endpoint
+
+Select an endpoint, inspect candidate source links, choose a review focus, and describe the intended roles, ownership, tenant boundaries, or business rules. Use **Add policy / service excerpt** when the relevant control is outside the mapped route excerpt.
+
+Click **Prepare evidence preview** before sharing. Then choose one of three paths:
+
+- **Save manual test plan** creates JSON with every check marked `not-run`.
+- **Choose model & send preview** uses a model registered through VS Code's Language Model API.
+- **Save pack for another assistant** creates the same bounded prompt as Markdown for manual transfer.
+
+If VS Code reports “No VS Code models available,” mapping and manual plans still work. Configure a compatible VS Code model provider or use the saved review pack.
+
+## What it does
+
+- Maps captured method/origin/path combinations to bounded static route candidates in supported Express, Flask, FastAPI, Spring MVC, and Next.js App Router patterns.
+- Shows candidate, ambiguous, and unmapped endpoints, plus source routes that have no matching capture.
+- Builds exact, inspectable prompts from redacted traffic and source snapshots with evidence IDs and hashes.
+- Includes six review profiles and eighteen checks, including eight lessons derived from attributed public vulnerability disclosures.
+- Requires structured model output with existing evidence IDs, missing evidence, validation steps, remediation, and a regression-test proposal.
+- Saves source maps, manual plans, external review packs, and cited review hypotheses.
+- Generates offline fuzz manifests and review-only Nuclei templates from the Burp and Python exporters.
+
+## What it does not do
+
+- It does not actively scan, replay requests, run Nuclei, run generated shell commands, modify source, or apply AI patches.
+- Route matches are static candidates, not runtime traces or proof that the deployed request used a particular handler.
+- Historical bug bounty reports are background guidance, not evidence about the selected application.
+- Model citations are checked for valid evidence IDs; semantic correctness still requires a human tester.
+- “No findings” is not proof that an application is secure.
+- Graph, workflow, OpenAPI, SQLite, and vector-index generation are Python CLI capabilities, not Burp JAR capabilities.
+
+## Documentation
+
+- [Installation and builds](docs/INSTALLATION.md)
+- [Tester workflow and troubleshooting](docs/USAGE.md)
+- [Detailed source-review behavior and limits](SOURCE_REVIEW_GUIDE.md)
+- [Release validation and remaining gates](REVIEW_REPORT.md)
+- [Architecture roadmap—proposal, not implemented functionality](AUTOMATION_ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy and data handling](SECURITY.md)
+- [Maintainer release procedure](docs/RELEASING.md)
+
+This candidate is stored locally inside a preserved `versions` directory. Before publishing, place the candidate's contents at the Git repository root so GitHub can discover `.github/workflows`; the exact clean-clone procedure is in the maintainer release guide.
+
+The safe [Juice Shop fixture](examples/juice-shop-export/README.md) can be used to verify installation without creating live traffic. The deterministic [source-review fixture](examples/source-review/README.md) exercises three mapped endpoints and one unobserved route.
+
+## Development summary
+
+Prerequisites are JDK 21, Python 3.10+, and Node.js 24. The Java artifact targets Java 17 and the VSIX requires desktop VS Code 1.95+.
+
+```text
+python -m pip install ./burpmd-parser -r burpmd-parser/requirements-test.txt
+python -m unittest discover -s burpmd-parser/tests -p "test_*.py" -v
+python -m build burpmd-parser
+
+cd Nexus_extension/src
+./gradlew test jar --no-daemon
+
+cd ../../vscode-extension
+npm ci
+npm test
+npm audit --audit-level=high
+npm run package
 ```
 
-Requires Python 3.8+. No external dependencies beyond the standard library.
+On Windows, use `gradlew.bat test jar --no-daemon` for the Java build. The full cross-platform commands and output locations are in [INSTALLATION.md](docs/INSTALLATION.md). GitHub Actions validates Python on Windows/Linux, Java on Windows/Linux, the Java→VS Code export contract, and VSIX packaging. Tagging `v1.1.0` runs the release workflow; it does not publish to the VS Code Marketplace or PyPI.
 
-**Basic usage:**
+## License
 
-```bash
-# Full analysis, sitemap layout (recommended)
-burpmd export.xml -o output_dir --sitemap --full-analysis --dedupe -v
-
-# JSON only
-burpmd export.xml -o output_dir --sitemap --dedupe
-
-# JSON + Markdown with findings
-burpmd export.xml -o output_dir --sitemap --md --auto-findings --dedupe
-```
-
-**Features:**
-
-- **Output modes:** `--sitemap` (recommended), `--by-host`, `--host-first`, `--split-by-session`, or flat (default).
-- **Format:** JSON (default), `--md` (add Markdown), `--md-only`.
-- **Filters:** `--only-tools` (e.g. proxy,repeater,scanner), `--only-status` (e.g. 401,403,5xx), `--dedupe`, `--redact-secrets`.
-- **Analysis:** `--auto-findings`, `--param-index`, `--ai-prompts`; or `--full-analysis` to enable all three.
-
-For full CLI options and output structure, see the `burpmd-parser/` folder (install scripts, run scripts, and package source).
-
----
-
-## Summary
-
-| Item | Extension | CLI |
-|------|-----------|-----|
-| **What** | Export Burp traffic to sitemap + indexes + findings + prompts. | Parse Burp XML to same corpus. |
-| **Install** | Load `Nexus_extension/burpnexus-1.0.0.jar` in Burp. | `pip install .` from `burpmd-parser/`. |
-| **Output** | `~/burpnexus_exports/<timestamp>/`. | `-o` directory (default `burp_export`). |
-| **Platform** | Windows, macOS, Linux (wherever Burp runs). | Python 3.8+ on Windows, macOS, Linux. |
+MIT. See [LICENSE](LICENSE).

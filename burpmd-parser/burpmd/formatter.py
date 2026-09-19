@@ -44,6 +44,8 @@ Each Markdown file follows a consistent structure:
 from __future__ import annotations
 
 import json
+import re
+import html
 from typing import Optional
 
 from .parser import BurpItem
@@ -55,7 +57,7 @@ from .parser import BurpItem
 
 def _escape_md(text: str) -> str:
     """Escape pipe characters so they don't break Markdown tables."""
-    return text.replace("|", "\\|").replace("\n", " ").replace("\r", "")
+    return html.escape(text).replace("`", "&#96;").replace("|", "\\|").replace("\n", " ").replace("\r", "")
 
 
 def _truncate(text: str, max_chars: int = 2000) -> tuple[str, bool]:
@@ -84,7 +86,8 @@ def _headers_table(headers: dict) -> str:
 def _code_block(content: str, lang: str = "", max_chars: int = 8000) -> str:
     content, truncated = _truncate(content, max_chars)
     note = "\n> **[Truncated]** Content exceeds display limit. See JSON block for full data.\n" if truncated else ""
-    return f"```{lang}\n{content}\n```\n{note}"
+    fence = "`" * max(3, max((len(m[0]) + 1 for m in re.finditer(r"`+", content)), default=3))
+    return f"{fence}{lang}\n{content}\n{fence}\n{note}"
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +118,8 @@ class MarkdownFormatter:
         self.include_raw_request  = include_raw_request
         self.include_raw_response = include_raw_response
         self.max_body_chars       = max_body_chars
+        if max_body_chars < 1:
+            raise ValueError("max_body_chars must be positive")
 
     # ------------------------------------------------------------------
     # Public

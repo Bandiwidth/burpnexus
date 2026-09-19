@@ -30,7 +30,6 @@ _SECURITY_HEADERS = {
     "strict-transport-security",
     "x-content-type-options",
     "x-frame-options",
-    "x-xss-protection",
     "referrer-policy",
     "permissions-policy",
     "cross-origin-opener-policy",
@@ -44,6 +43,8 @@ _SENSITIVE_PATTERNS = [
     (re.compile(r"(?i)(?:password|passwd|secret|private.?key)\s*[:=]\s*[\"']?[^\s\"',}{]{4,}"), "hardcoded secret"),
     (re.compile(r"(?i)(?:aws_?access_?key|AKIA)[A-Z0-9]{12,}"), "AWS key"),
     (re.compile(r"(?i)(?:sk-|pk_live_|pk_test_|sk_live_|sk_test_)[A-Za-z0-9]{20,}"), "API secret key"),
+    (re.compile(r"(?i)(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36}"), "GitHub Token"),
+    (re.compile(r"xox[baprs]-[0-9]{10,13}-[a-zA-Z0-9]{24}"), "Slack Token"),
 ]
 
 _ERROR_SIGNATURES = [
@@ -85,6 +86,7 @@ def generate_security_findings(
     _check_reflected_input(export, findings)
     _check_error_disclosure(export, findings)
     _check_sensitive_data_in_responses(export, findings)
+    _check_jwt_tokens(export, findings)
     _check_unauthenticated_endpoints(export, findings)
     _check_cors_misconfig(export, findings)
     _check_http_methods(export, findings)
@@ -221,7 +223,7 @@ def _check_sensitive_data_in_responses(export: BurpExport, findings: list) -> No
         for pat, label in _SENSITIVE_PATTERNS:
             match = pat.search(body)
             if match:
-                snippet = match.group(0)[:40]
+                snippet = "[REDACTED]"
                 findings.append({
                     "category": "Sensitive Data Exposure",
                     "severity": "High",
@@ -231,6 +233,46 @@ def _check_sensitive_data_in_responses(export: BurpExport, findings: list) -> No
                     "items": [item.slug],
                 })
                 break
+
+def _check_jwt_tokens(export: BurpExport, findings: list) -> None:
+    import base64
+    jwt_pat = re.compile(r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*")
+
+    for item in export.items:
+        search_areas = [item.request_raw or "", item.response_raw or ""]
+        for area in search_areas:
+            for match in jwt_pat.finditer(area):
+                jwt_str = match.group(0)
+                parts = jwt_str.split('.')
+                if len(parts) == 3:
+                    try:
+                        header_b64 = parts[0] + "=" * ((4 - len(parts[0]) % 4) % 4)
+                        payload_b64 = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+
+                        header = json.loads(base64.urlsafe_b64decode(header_b64).decode('utf-8'))
+                        payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode('utf-8'))
+
+                        issues = []
+                        if header.get('alg', '').lower() == 'none':
+                            issues.append("Algorithm set to 'none'")
+
+                        sensitive_keys = {"password", "secret", "private_key"}
+                        found_claims = sorted(k for k in sensitive_keys if k in payload)
+                        if found_claims:
+                            issues.append(f"Sensitive claims: {found_claims}")
+
+                        if issues:
+                            findings.append({
+                                "category": "JWT Security",
+                                "severity": "High",
+                                "title": f"Insecure JWT found: {item.method} {item.path}",
+                                "detail": " | ".join(issues),
+                                "host": item.host,
+                                "items": [item.slug],
+                            })
+                            break
+                    except Exception:
+                        pass
 
 
 def _check_unauthenticated_endpoints(export: BurpExport, findings: list) -> None:
@@ -257,35 +299,18 @@ def _check_unauthenticated_endpoints(export: BurpExport, findings: list) -> None
 
 def _check_cors_misconfig(export: BurpExport, findings: list) -> None:
     for item in export.items:
-        resp = item.response_headers or {}
-        acao = ""
-        for k, v in resp.items():
-            if k.lower() == "access-control-allow-origin":
-                acao = v.strip()
-                break
-        if acao == "*":
-            findings.append({
-                "category": "CORS Misconfiguration",
-                "severity": "Medium",
-                "title": f"Wildcard CORS: {item.method} {item.path}",
-                "detail": "Access-Control-Allow-Origin: * allows any origin.",
-                "host": item.host,
-                "items": [item.slug],
-            })
-        elif acao and acao != item.host:
-            acac = ""
-            for k, v in resp.items():
-                if k.lower() == "access-control-allow-credentials":
-                    acac = v.strip().lower()
-            if acac == "true":
-                findings.append({
-                    "category": "CORS Misconfiguration",
-                    "severity": "High",
-                    "title": f"CORS with credentials: {item.method} {item.path}",
-                    "detail": f"Origin '{acao}' with Allow-Credentials: true.",
-                    "host": item.host,
-                    "items": [item.slug],
-                })
+        headers = {k.lower(): v for k, v in (item.response_headers or {}).items()}
+        origin = headers.get("access-control-allow-origin", "").strip()
+        credentials = headers.get("access-control-allow-credentials", "").strip().lower()
+        if origin == "*":
+            title = "Wildcard CORS review"
+            detail = "Any origin can read noncredentialed responses. This may be intentional for public resources; browsers reject wildcard origins with credentials."
+        elif origin and credentials == "true":
+            title = "Credentialed CORS review"
+            detail = f"Allowed origin '{origin}'. Confirm whether it is trusted and sensitive data is exposed; a captured allowlist value does not prove arbitrary origin reflection."
+        else:
+            continue
+        findings.append({"category": "CORS Misconfiguration", "severity": "Info", "title": f"{title}: {item.method} {item.path}", "detail": detail, "host": item.host, "items": [item.slug]})
 
 
 def _check_http_methods(export: BurpExport, findings: list) -> None:
@@ -312,35 +337,20 @@ def _check_http_methods(export: BurpExport, findings: list) -> None:
 
 
 def _check_cookie_security(export: BurpExport, findings: list) -> None:
-    seen_cookies: dict[str, dict] = {}
-
+    seen = set()
     for item in export.items:
-        resp = item.response_headers or {}
-        for k, v in resp.items():
-            if k.lower() != "set-cookie":
+        for key, value in (item.response_headers or {}).items():
+            if key.lower() != "set-cookie":
                 continue
-            cookie_str = v
-            name_part = cookie_str.split("=")[0].strip() if "=" in cookie_str else "unknown"
-            flags_lower = cookie_str.lower()
-
-            issues = []
-            if "httponly" not in flags_lower:
-                issues.append("missing HttpOnly")
-            if "secure" not in flags_lower:
-                issues.append("missing Secure")
-            if "samesite" not in flags_lower:
-                issues.append("missing SameSite")
-
-            if issues and name_part not in seen_cookies:
-                seen_cookies[name_part] = True
-                findings.append({
-                    "category": "Cookie Security",
-                    "severity": "Medium",
-                    "title": f"Insecure cookie '{name_part}' on {item.host}",
-                    "detail": f"Cookie flags: {', '.join(issues)}.",
-                    "host": item.host,
-                    "items": [item.slug],
-                })
+            for cookie in value.splitlines():
+                fields = cookie.split(";")
+                name = fields[0].split("=", 1)[0].strip()
+                flags = {field.split("=", 1)[0].strip().lower() for field in fields[1:]}
+                issues = [f"missing {label}" for flag, label in (("httponly", "HttpOnly"), ("secure", "Secure"), ("samesite", "SameSite")) if flag not in flags]
+                identity = (item.host, name, tuple(issues))
+                if issues and identity not in seen:
+                    seen.add(identity)
+                    findings.append({"category": "Cookie Security", "severity": "Medium", "title": f"Cookie review '{name}' on {item.host}", "detail": f"Cookie flags: {', '.join(issues)}. Assess against the cookie purpose.", "host": item.host, "items": [item.slug]})
 
 
 def _check_open_redirects(export: BurpExport, findings: list) -> None:
@@ -669,14 +679,14 @@ def generate_ai_prompts(
     if auth_endpoints:
         lines.append("### Access Control / IDOR\n")
         lines.append("```")
-        sample = list(set(auth_endpoints))[:5]
-        lines.append(f"@workspace Check these authenticated endpoints for IDOR vulnerabilities: {'; '.join(sample)}. For each endpoint, verify if the server validates that the authenticated user owns the requested resource. Generate PoC scripts for any findings.")
+        sample = sorted(set(auth_endpoints))[:5]
+        lines.append(f"@workspace Check these authenticated endpoints for IDOR vulnerabilities: {'; '.join(sample)}. For each endpoint, verify if the server validates that the authenticated user owns the requested resource. Describe evidence still needed to confirm each candidate.")
         lines.append("```\n")
 
     if noauth_endpoints:
         lines.append("### Unauthenticated Access\n")
         lines.append("```")
-        sample = list(set(noauth_endpoints))[:5]
+        sample = sorted(set(noauth_endpoints))[:5]
         lines.append(f"@workspace These endpoints were accessed without authentication: {'; '.join(sample)}. Check the source code to determine if they should require auth and if any expose sensitive data.")
         lines.append("```\n")
 
@@ -687,7 +697,7 @@ def generate_ai_prompts(
 
     lines.append("### SSRF\n")
     lines.append("```")
-    lines.append("@workspace Find any request parameters that accept URLs, hostnames, file paths, or IP addresses. Check if the application makes server-side requests based on this input. Test for SSRF using internal URLs like http://169.254.169.254/.")
+    lines.append("@workspace Find any request parameters that accept URLs, hostnames, file paths, or IP addresses. Check if the application makes server-side requests based on this input. Propose a scoped manual validation plan; do not issue network requests.")
     lines.append("```\n")
 
     if error_endpoints:

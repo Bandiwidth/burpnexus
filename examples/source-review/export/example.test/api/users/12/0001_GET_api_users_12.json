@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "index": 1,
+    "tool": "proxy",
+    "time": "2026-09-15T10:00-04:00[America/New_York]",
+    "url": "https://example.test:8443/api/users/12?id=12",
+    "host": "example.test",
+    "host_ip": "",
+    "port": "8443",
+    "protocol": "https",
+    "method": "GET",
+    "path": "/api/users/12",
+    "extension": "",
+    "status": "200",
+    "response_length": "95",
+    "mime_type": "text/html",
+    "comment": "",
+    "sha256": "6beea7d316ac0d464260146db6cba8d9c1680468d07fe308fc72f739d0655e61",
+    "session_tag": ""
+  },
+  "request": {
+    "raw": "GET /api/users/12?id=12 HTTP/1.1\r\nHost: example.test\r\nAuthorization: [REDACTED]\r\nCookie: [REDACTED]\r\nContent-Type: application/json\r\n\r\n",
+    "headers": {
+      "Host": "example.test",
+      "Authorization": "[REDACTED]",
+      "Cookie": "[REDACTED]",
+      "Content-Type": "application/json"
+    },
+    "body": ""
+  },
+  "response": {
+    "status_line": "HTTP/1.1 200 OK",
+    "raw": "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nSet-Cookie: [REDACTED]\r\n\r\n{\"id\":12}",
+    "headers": {
+      "Content-Type": "text/html",
+      "Set-Cookie": "[REDACTED]"
+    },
+    "body": "{\"id\":12}"
+  }
+}

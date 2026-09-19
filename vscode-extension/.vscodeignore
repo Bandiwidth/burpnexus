@@ -1,0 +1,9 @@
+node_modules/**
+npm-cache/**
+test/**
+package-lock.json
+*.vsix
+.vscode/**
+test-host/**
+
+scripts/**

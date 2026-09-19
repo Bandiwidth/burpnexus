@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "total_items": 3,
+    "unique_hosts": 1,
+    "unique_tools": 1,
+    "unique_endpoints": 3,
+    "unique_sessions": 1
+  },
+  "top_endpoints": [
+    {
+      "endpoint": "GET /api/users/12",
+      "count": 1
+    },
+    {
+      "endpoint": "GET /search",
+      "count": 1
+    },
+    {
+      "endpoint": "POST /api/orders",
+      "count": 1
+    }
+  ],
+  "methods": {
+    "GET": 2,
+    "POST": 1
+  },
+  "statuses": {
+    "200": 3
+  },
+  "auth_headers_observed": [
+    "Authorization",
+    "Cookie"
+  ],
+  "security_headers_observed": [],
+  "sensitive_query_params_observed": [],
+  "session_buckets": {
+    "session_anon": 3
+  }
+}

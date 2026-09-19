@@ -51,6 +51,7 @@ $burpmdArgs = @(
     "--sitemap",
     "--full-analysis",
     "--dedupe",
+    "--vscode",
     "-v"
 )
 
@@ -62,6 +63,7 @@ try {
 }
 
 Write-Host ""
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "=== Export Complete ===" -ForegroundColor Green
 Write-Host "Output: $OutputDir" -ForegroundColor White
 Write-Host ""

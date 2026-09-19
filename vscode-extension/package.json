@@ -1,0 +1,116 @@
+{
+  "name": "burpnexus",
+  "displayName": "BurpNexus Source Review",
+  "description": "Map Burp traffic to application routes and review cited source evidence with a VS Code model.",
+  "version": "1.1.0",
+  "publisher": "burpnexus",
+  "license": "MIT",
+  "pricing": "Free",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bandiwidth/burpnexus.git",
+    "directory": "vscode-extension"
+  },
+  "homepage": "https://github.com/Bandiwidth/burpnexus#readme",
+  "bugs": {
+    "url": "https://github.com/Bandiwidth/burpnexus/issues"
+  },
+  "keywords": [
+    "burp-suite",
+    "application-security",
+    "pentesting",
+    "dast",
+    "source-review"
+  ],
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "burpnexus.connect",
+        "title": "BurpNexus: Connect Export to Source Repository"
+      },
+      {
+        "command": "burpnexus.openAnalysis",
+        "title": "BurpNexus: Open AI Analysis"
+      },
+      {
+        "command": "burpnexus.importXml",
+        "title": "BurpNexus: Import Burp XML"
+      },
+      {
+        "command": "burpnexus.mapTraffic",
+        "title": "BurpNexus: Refresh Traffic to Source Map"
+      }
+    ],
+    "configuration": {
+      "title": "BurpNexus",
+      "properties": {
+        "burpnexus.corpusPath": {
+          "type": "string",
+          "default": ".",
+          "description": "Export folder relative to the selected workspace."
+        },
+        "burpnexus.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "scope": "machine",
+          "description": "Python executable with burpmd-parser installed. No shell arguments."
+        },
+        "burpnexus.sourceExcludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional repository-relative directories or files to exclude from source indexing (no glob syntax)."
+        },
+        "burpnexus.pathRewrites": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": [
+              "origin",
+              "from",
+              "to"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Explicit reverse-proxy prefix rewrites, e.g. origin https://app.test, from /gateway, to /. Applied before route matching; shown in evidence."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "3.6.0"
+  }
+}

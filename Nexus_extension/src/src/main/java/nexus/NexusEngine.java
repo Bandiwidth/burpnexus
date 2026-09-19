@@ -29,72 +29,41 @@ final class NexusEngine {
         this.collector = collector;
     }
 
-    // ---- public entry points -------------------------------------------
+    private final java.util.concurrent.atomic.AtomicBoolean busy = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile Thread worker;
+    private volatile boolean closed;
 
-    /**
-     * Export the given pre-collected items with the specified configuration.
-     * Runs on a daemon background thread.
-     */
-    void exportAsync(List<NexusItem> items, ExportConfig cfg, StatusCallback statusCb) {
-        if (items == null || items.isEmpty()) {
-            api.logging().logToError("[-] No items to export.");
-            if (statusCb != null) statusCb.onStatus("No items to export.");
+    private void submit(Runnable task, StatusCallback callback) {
+        if (closed || !busy.compareAndSet(false, true)) {
+            if (callback != null) callback.onStatus("Error: Export engine is busy or unloaded.");
             return;
         }
-
-        Thread t = new Thread(() -> runExport(items, cfg, statusCb), "BurpNexus-Export");
-        t.setDaemon(true);
-        t.start();
-    }
-
-    /**
-     * Collect all items (full project or scope-only) and export.
-     */
-    void exportAllAsync(ExportConfig cfg, StatusCallback statusCb) {
-        Thread t = new Thread(() -> {
-            try {
-                if (statusCb != null) statusCb.onStatus("Collecting items...");
-                List<NexusItem> items = collector.collectAll(cfg.scopeOnly);
-                api.logging().logToOutput("[*] Collected " + items.size() + " items.");
-                runExport(items, cfg, statusCb);
-            } catch (OutOfMemoryError oom) {
-                api.logging().logToError("[-] OUT OF MEMORY during collection: " + oom.getMessage());
-                if (statusCb != null) statusCb.onStatus("Error: Out of memory during collection.");
-            } catch (Throwable t1) {
-                api.logging().logToError("[-] Collection error: " + t1.getMessage());
-                if (statusCb != null) statusCb.onStatus("Error: " + t1.getMessage());
-            }
+        worker = new Thread(() -> {
+            try { task.run(); }
+            catch (Exception ex) {
+                api.logging().logToError("[-] Export failed: " + ex.getMessage());
+                if (callback != null) callback.onStatus("Error: " + ex.getMessage());
+            } finally { busy.set(false); }
         }, "BurpNexus-Export");
-        t.setDaemon(true);
-        t.start();
+        worker.setDaemon(true);
+        worker.start();
     }
-
-    /**
-     * Collect for specific hosts and export.
-     */
-    void exportForHostsAsync(List<String> hosts, ExportConfig cfg, StatusCallback statusCb) {
-        Thread t = new Thread(() -> {
-            try {
-                if (statusCb != null) statusCb.onStatus("Deep-crawling hosts...");
-                List<NexusItem> items = collector.collectForHosts(hosts);
-                runExport(items, cfg, statusCb);
-            } catch (OutOfMemoryError oom) {
-                api.logging().logToError("[-] OUT OF MEMORY during host crawl: " + oom.getMessage());
-                if (statusCb != null) statusCb.onStatus("Error: Out of memory during collection.");
-            } catch (Throwable t1) {
-                api.logging().logToError("[-] Collection error: " + t1.getMessage());
-                if (statusCb != null) statusCb.onStatus("Error: " + t1.getMessage());
-            }
-        }, "BurpNexus-Export");
-        t.setDaemon(true);
-        t.start();
+    void close() { closed = true; Thread t = worker; if (t != null) t.interrupt(); }
+    void exportAsync(List<NexusItem> items, ExportConfig cfg, StatusCallback cb) {
+        submit(() -> runExport(items, cfg, cb), cb);
+    }
+    void exportAllAsync(ExportConfig cfg, StatusCallback cb) {
+        submit(() -> { if (cb != null) cb.onStatus("Collecting items..."); runExport(collector.collectAll(cfg.scopeOnly), cfg, cb); }, cb);
+    }
+    void exportForHostsAsync(List<String> hosts, ExportConfig cfg, StatusCallback cb) {
+        submit(() -> { if (cb != null) cb.onStatus("Collecting selected hosts..."); runExport(collector.collectForHosts(hosts, cfg.scopeOnly), cfg, cb); }, cb);
     }
 
     // ---- core pipeline -------------------------------------------------
 
     private void runExport(List<NexusItem> items, ExportConfig cfg, StatusCallback statusCb) {
         try {
-            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS").format(new Date());
             String subdir = "export_" + ts;
 
             // Determine output subfolder for special search modes
@@ -106,7 +75,9 @@ final class NexusEngine {
                 subdir = "regex_search_" + label + "_" + ts;
             }
 
-            Path outputDir = Paths.get(HOME, "burpnexus_exports", subdir);
+            Path parent = Paths.get(HOME, "burpnexus_exports");
+            java.nio.file.Files.createDirectories(parent);
+            Path outputDir = java.nio.file.Files.createTempDirectory(parent, subdir + "_");
 
             // Step 1: Filter
             if (statusCb != null) statusCb.onStatus("Filtering " + items.size() + " items...");
@@ -156,7 +127,26 @@ final class NexusEngine {
             if (cfg.aiPrompts) {
                 if (statusCb != null) statusCb.onStatus("Generating AI prompts...");
                 SecurityAnalyzer.generateAiPrompts(export, outputDir);
+                WorkspaceExport.write(outputDir);
                 api.logging().logToOutput("[+] AI prompts generated.");
+            }
+            if (cfg.generateFuzz) {
+                // Auto-enable findings if not already generated (fuzz depends on findings)
+                if (!cfg.autoFindings) {
+                    SecurityAnalyzer.generateSecurityFindings(export, outputDir);
+                }
+                if (statusCb != null) statusCb.onStatus("Generating fuzz manifest...");
+                SecurityAnalyzer.generateFuzzManifest(export, outputDir);
+                api.logging().logToOutput("[+] Fuzz manifest generated.");
+            }
+            if (cfg.generateNuclei) {
+                // Auto-enable findings if not already generated (nuclei depends on findings)
+                if (!cfg.autoFindings && !cfg.generateFuzz) {
+                    SecurityAnalyzer.generateSecurityFindings(export, outputDir);
+                }
+                if (statusCb != null) statusCb.onStatus("Generating Nuclei templates...");
+                SecurityAnalyzer.generateNucleiTemplates(export, outputDir);
+                api.logging().logToOutput("[+] Nuclei templates generated.");
             }
 
             // Done

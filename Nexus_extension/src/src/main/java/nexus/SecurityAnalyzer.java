@@ -22,7 +22,7 @@ final class SecurityAnalyzer {
 
     private static final Set<String> SECURITY_HEADERS = Set.of(
         "content-security-policy", "strict-transport-security",
-        "x-content-type-options", "x-frame-options", "x-xss-protection",
+        "x-content-type-options", "x-frame-options",
         "referrer-policy", "permissions-policy",
         "cross-origin-opener-policy", "cross-origin-resource-policy");
 
@@ -79,12 +79,56 @@ final class SecurityAnalyzer {
         checkHttpMethods(export, findings);
         checkCookieSecurity(export, findings);
         checkOpenRedirects(export, findings);
+        checkJwtUsage(export, findings);
+        checkApiSecrets(export, findings);
 
         writeFindingsMd(export, findings, outputDir);
         writeFindingsJson(findings, outputDir);
     }
 
     // ---- checks --------------------------------------------------------
+
+    private static void checkJwtUsage(NexusExport export, List<Map<String, Object>> findings) {
+        Pattern jwt = Pattern.compile("eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*");
+        for (NexusItem item : export.items) {
+            Matcher matches = jwt.matcher(item.reconstructRequestRaw() + "\n" + item.reconstructResponseRaw());
+            while (matches.find()) {
+                try {
+                    String[] parts = matches.group().split("\\.", -1);
+                    var header = com.google.gson.JsonParser.parseString(new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8)).getAsJsonObject();
+                    var payload = com.google.gson.JsonParser.parseString(new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8)).getAsJsonObject();
+                    List<String> issues = new ArrayList<>();
+                    if (header.has("alg") && "none".equalsIgnoreCase(header.get("alg").getAsString())) issues.add("Algorithm set to none; server acceptance is unverified");
+                    for (String key : List.of("password", "secret", "private_key")) if (payload.has(key)) issues.add("Sensitive claim: " + key);
+                    if (!issues.isEmpty()) {
+                        findings.add(finding("JWT Security", "High", "JWT review: " + item.method + " " + item.path,
+                            String.join("; ", issues), item.host, List.of(item.slug)));
+                        break;
+                    }
+                } catch (IllegalArgumentException | IllegalStateException | com.google.gson.JsonParseException ignored) {}
+            }
+        }
+    }
+
+    private static void checkApiSecrets(NexusExport export, List<Map<String, Object>> findings) {
+        Map<String, List<String>> found = new HashMap<>();
+        Pattern secretPattern = Pattern.compile("(ghp_[A-Za-z0-9]{36}|xox[baprs]-[a-zA-Z0-9]{10,})");
+
+        for (NexusItem item : export.items) {
+            Matcher mReq = secretPattern.matcher(item.requestBody);
+            Matcher mRes = secretPattern.matcher(item.responseBody);
+            if (mReq.find() || mRes.find()) {
+                found.computeIfAbsent(item.host, k -> new ArrayList<>()).add(item.method + " " + item.path);
+            }
+        }
+
+        for (Map.Entry<String, List<String>> e : found.entrySet()) {
+            findings.add(buildFinding("Sensitive Data", "HIGH",
+                "API Secrets Discovered",
+                "Potential API keys (GitHub, Slack, etc.) were found in the HTTP traffic.",
+                e.getKey(), e.getValue()));
+        }
+    }
 
     private static void checkMissingSecurityHeaders(NexusExport export, List<Map<String, Object>> findings) {
         Map<String, Set<String>> hostMissing = new HashMap<>();
@@ -181,7 +225,7 @@ final class SecurityAnalyzer {
                 if (m.find()) {
                     findings.add(finding("Sensitive Data Exposure", "High",
                         pat[1] + " in response: " + item.method + " " + item.path,
-                        "Matched pattern: '" + m.group(0).substring(0, Math.min(40, m.group(0).length())) + "...'",
+                        "Matched credential-like pattern (value redacted)",
                         item.host, List.of(item.slug)));
                     break;
                 }
@@ -212,19 +256,13 @@ final class SecurityAnalyzer {
     private static void checkCorsMisconfig(NexusExport export, List<Map<String, Object>> findings) {
         for (NexusItem item : export.items) {
             String acao = headerValue(item.responseHeaders, "access-control-allow-origin");
+            String acac = headerValue(item.responseHeaders, "access-control-allow-credentials");
             if ("*".equals(acao)) {
-                findings.add(finding("CORS Misconfiguration", "Medium",
-                    "Wildcard CORS: " + item.method + " " + item.path,
-                    "Access-Control-Allow-Origin: * allows any origin.",
-                    item.host, List.of(item.slug)));
-            } else if (!acao.isEmpty() && !acao.equals(item.host)) {
-                String acac = headerValue(item.responseHeaders, "access-control-allow-credentials");
-                if ("true".equalsIgnoreCase(acac)) {
-                    findings.add(finding("CORS Misconfiguration", "High",
-                        "CORS with credentials: " + item.method + " " + item.path,
-                        "Origin '" + acao + "' with Allow-Credentials: true.",
-                        item.host, List.of(item.slug)));
-                }
+                findings.add(finding("CORS Misconfiguration", "Info", "Wildcard CORS review: " + item.method + " " + item.path,
+                    "Any origin can read noncredentialed responses. This may be intentional for public resources; browsers reject wildcard origins with credentials.", item.host, List.of(item.slug)));
+            } else if (!acao.isEmpty() && "true".equalsIgnoreCase(acac)) {
+                findings.add(finding("CORS Misconfiguration", "Info", "Credentialed CORS review: " + item.method + " " + item.path,
+                    "Allowed origin '" + acao + "'. Confirm whether that origin is trusted and whether sensitive data is exposed; a captured allowlist value does not prove arbitrary origin reflection.", item.host, List.of(item.slug)));
             }
         }
     }
@@ -253,21 +291,19 @@ final class SecurityAnalyzer {
     private static void checkCookieSecurity(NexusExport export, List<Map<String, Object>> findings) {
         Set<String> seen = new HashSet<>();
         for (NexusItem item : export.items) {
-            String sc = headerValue(item.responseHeaders, "set-cookie");
-            if (sc.isEmpty()) continue;
-            String name = sc.contains("=") ? sc.split("=")[0].trim() : "unknown";
-            if (seen.contains(name)) continue;
-            String lower = sc.toLowerCase(Locale.ROOT);
-            List<String> issues = new ArrayList<>();
-            if (!lower.contains("httponly")) issues.add("missing HttpOnly");
-            if (!lower.contains("secure"))   issues.add("missing Secure");
-            if (!lower.contains("samesite")) issues.add("missing SameSite");
-            if (!issues.isEmpty()) {
-                seen.add(name);
-                findings.add(finding("Cookie Security", "Medium",
-                    "Insecure cookie '" + name + "' on " + item.host,
-                    "Cookie flags: " + String.join(", ", issues) + ".",
-                    item.host, List.of(item.slug)));
+            for (String cookie : headerValue(item.responseHeaders, "set-cookie").split("\n")) {
+                if (cookie.isBlank()) continue;
+                String[] fields = cookie.split(";");
+                String name = fields[0].split("=", 2)[0].trim();
+                Set<String> flags = new HashSet<>();
+                for (int i = 1; i < fields.length; i++) flags.add(fields[i].split("=", 2)[0].trim().toLowerCase(Locale.ROOT));
+                List<String> issues = new ArrayList<>();
+                if (!flags.contains("httponly")) issues.add("missing HttpOnly");
+                if (!flags.contains("secure")) issues.add("missing Secure");
+                if (!flags.contains("samesite")) issues.add("missing SameSite");
+                String key = item.host + "|" + name + "|" + String.join(",", issues);
+                if (!issues.isEmpty() && seen.add(key)) findings.add(finding("Cookie Security", "Medium",
+                    "Cookie review '" + name + "' on " + item.host, "Cookie flags: " + String.join(", ", issues) + ". Assess against the cookie purpose.", item.host, List.of(item.slug)));
             }
         }
     }
@@ -637,5 +673,27 @@ final class SecurityAnalyzer {
     private static void writeText(Path path, String content) throws IOException {
         Files.createDirectories(path.getParent());
         Files.writeString(path, content, StandardCharsets.UTF_8);
+    }
+
+    // buildFinding alias used by JWT/API-secret checks
+    private static Map<String, Object> buildFinding(String category, String severity,
+                                                     String title, String detail,
+                                                     String host, List<String> items) {
+        return finding(category, severity, title, detail, host, items);
+    }
+
+    // ====================================================================
+    // 4. Fuzz Manifest
+    // ====================================================================
+
+    /**
+     * Generate a fuzz manifest from previously-computed security findings.
+     * Reads security-findings.json and produces FUZZ_MANIFEST.json + FUZZ_COMMANDS.md.
+     */
+    static void generateFuzzManifest(NexusExport export, Path outputDir) throws IOException {
+        ActiveArtifacts.fuzz(export, outputDir);
+    }
+    static void generateNucleiTemplates(NexusExport export, Path outputDir) throws IOException {
+        ActiveArtifacts.nuclei(export, outputDir);
     }
 }

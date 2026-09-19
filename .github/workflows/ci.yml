@@ -1,0 +1,111 @@
+name: Validate BurpNexus
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: burpmd-parser/requirements-test.txt
+      - name: Install parser and test dependencies
+        run: python -m pip install ./burpmd-parser -r burpmd-parser/requirements-test.txt
+      - name: Run parser regression tests
+        run: python -m unittest discover -s burpmd-parser/tests -p "test_*.py" -v
+      - name: Build Python distributions
+        run: python -m build burpmd-parser
+
+  java:
+    name: Java / ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and build Burp extension (Linux)
+        if: runner.os != 'Windows'
+        working-directory: Nexus_extension/src
+        run: ./gradlew test jar --no-daemon
+      - name: Test and build Burp extension (Windows)
+        if: runner.os == 'Windows'
+        working-directory: Nexus_extension/src
+        shell: pwsh
+        run: .\gradlew.bat test jar --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: java-contract-export
+          path: Nexus_extension/src/build/release/contract-export
+          if-no-files-found: error
+          retention-days: 7
+
+  vscode:
+    name: VS Code extension
+    needs: java
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vscode-extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Run extension tests
+        run: npm test
+      - uses: actions/download-artifact@v4
+        with:
+          name: java-contract-export
+          path: .validation/java-contract
+      - name: Verify Java export compatibility
+        run: node scripts/validate-contract.js ../.validation/java-contract
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
+      - name: Package VSIX
+        run: npm run package
+      - name: Verify packaged runtime resources
+        shell: bash
+        run: |
+          unzip -l burpnexus-1.1.0.vsix | grep 'extension/skills/public-bounty-review/SKILL.md'
+          unzip -l burpnexus-1.1.0.vsix | grep 'extension/skills/public-bounty-review/references/catalog.json'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: burpnexus-vsix
+          path: vscode-extension/burpnexus-1.1.0.vsix
+          if-no-files-found: error
+          retention-days: 14

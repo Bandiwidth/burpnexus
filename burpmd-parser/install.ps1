@@ -5,7 +5,7 @@
 #   .\install.ps1
 #
 # What it does:
-#   1. Checks Python 3.8+ is available
+#   1. Checks Python 3.10+ is available
 #   2. Creates a virtual environment (.venv)
 #   3. Installs burpmd into it
 #   4. Verifies the installation
@@ -21,7 +21,7 @@ $pythonCmd = $null
 foreach ($candidate in @("python", "py -3", "python3")) {
     try {
         $ver = & ($candidate.Split(" ")[0]) @($candidate.Split(" ") | Select-Object -Skip 1) --version 2>&1
-        if ($ver -match "Python 3\.([8-9]|[1-9]\d)") {
+        if ($ver -match "Python 3\.(1[0-9]|[2-9]\d)") {
             $pythonCmd = $candidate
             Write-Host "[OK] Found $ver using '$candidate'" -ForegroundColor Green
             break
@@ -30,7 +30,7 @@ foreach ($candidate in @("python", "py -3", "python3")) {
 }
 
 if (-not $pythonCmd) {
-    Write-Host "[ERROR] Python 3.8+ is required but not found." -ForegroundColor Red
+    Write-Host "[ERROR] Python 3.10+ is required but not found." -ForegroundColor Red
     Write-Host "        Download from https://www.python.org/downloads/" -ForegroundColor Yellow
     Write-Host "        Make sure 'Add Python to PATH' is checked during install." -ForegroundColor Yellow
     exit 1
@@ -43,6 +43,7 @@ if (-not (Test-Path $venvPath)) {
     Write-Host "[*] Creating virtual environment at .venv ..." -ForegroundColor Cyan
     $pyParts = $pythonCmd.Split(" ")
     & $pyParts[0] @($pyParts | Select-Object -Skip 1) -m venv $venvPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "[OK] Virtual environment created." -ForegroundColor Green
 } else {
     Write-Host "[OK] Virtual environment already exists at .venv" -ForegroundColor Green
@@ -60,7 +61,8 @@ Write-Host "[*] Activating virtual environment ..." -ForegroundColor Cyan
 & $activateScript
 
 Write-Host "[*] Installing BurpMD Parser Pro ..." -ForegroundColor Cyan
-pip install $PSScriptRoot
+python -m pip install $PSScriptRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # --- Verify ---
 Write-Host ""

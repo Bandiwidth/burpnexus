@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "index": 2,
+    "tool": "proxy",
+    "time": "2026-09-15T10:00-04:00[America/New_York]",
+    "url": "https://example.test:8443/search?q=hello",
+    "host": "example.test",
+    "host_ip": "",
+    "port": "8443",
+    "protocol": "https",
+    "method": "GET",
+    "path": "/search",
+    "extension": "",
+    "status": "200",
+    "response_length": "91",
+    "mime_type": "text/html",
+    "comment": "",
+    "sha256": "7f366b5dc7639f1de22f5f23556c91f86a212e3a99869e1ea440f7e72afcc488",
+    "session_tag": ""
+  },
+  "request": {
+    "raw": "GET /search?q=hello HTTP/1.1\r\nHost: example.test\r\nAuthorization: [REDACTED]\r\nCookie: [REDACTED]\r\nContent-Type: application/json\r\n\r\n",
+    "headers": {
+      "Host": "example.test",
+      "Authorization": "[REDACTED]",
+      "Cookie": "[REDACTED]",
+      "Content-Type": "application/json"
+    },
+    "body": ""
+  },
+  "response": {
+    "status_line": "HTTP/1.1 200 OK",
+    "raw": "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nSet-Cookie: [REDACTED]\r\n\r\nhello",
+    "headers": {
+      "Content-Type": "text/html",
+      "Set-Cookie": "[REDACTED]"
+    },
+    "body": "hello"
+  }
+}

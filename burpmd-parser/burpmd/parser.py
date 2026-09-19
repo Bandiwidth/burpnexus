@@ -36,6 +36,7 @@ import base64
 import hashlib
 import re
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import iterparse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -119,6 +120,7 @@ class BurpItem:
     # Raw decoded bytes (stored as str for JSON serialisation)
     request_raw:    str             = ""
     response_raw:   str             = ""
+    response_bytes: bytes          = b""  # original bytes retained only for WASM
 
     # Parsed HTTP components
     request_headers:  dict          = field(default_factory=dict)
@@ -215,18 +217,18 @@ def _decode_field(element: Optional[ET.Element]) -> str:
     """
     if element is None:
         return ""
-    raw_text = (element.text or "").strip()
+    raw_text = element.text or ""
     if not raw_text:
         return ""
 
     is_b64 = element.get("base64", "false").lower() == "true"
     if is_b64:
         try:
-            data = base64.b64decode(raw_text)
-        except Exception:
-            return raw_text   # return as-is if decode fails
+            data = base64.b64decode(re.sub(r"\s+", "", raw_text), validate=True)
+        except ValueError as exc:
+            raise ValueError("Invalid base64 HTTP field") from exc
     else:
-        data = raw_text.encode("latin-1", errors="replace")
+        return raw_text
 
     # Try UTF-8 first, fall back to latin-1
     try:
@@ -255,7 +257,7 @@ def _make_slug(item: BurpItem) -> str:
 
     Format: {index:04d}_{METHOD}_{sanitised_path}
     """
-    method = (item.method or "REQ").upper()[:10]
+    method = re.sub(r"[^A-Z0-9_-]", "_", (item.method or "REQ").upper())[:10]
     path_part = re.sub(r"[^\w\-.]", "_", item.path or "root")
     path_part = re.sub(r"_+", "_", path_part).strip("_")[:60]
     return f"{item.index:04d}_{method}_{path_part}"
@@ -285,7 +287,8 @@ def _parse_http_headers(raw: str) -> tuple[dict, str]:
     for line in lines[1:]:   # skip the request/status line
         if ":" in line:
             name, _, value = line.partition(":")
-            headers[name.strip()] = value.strip()
+            key = next((k for k in headers if k.lower() == name.strip().lower()), name.strip())
+            headers[key] = headers[key] + "\n" + value.strip() if key in headers else value.strip()
 
     return headers, body
 
@@ -335,53 +338,50 @@ class BurpXMLParser:
     # Public interface
     # ------------------------------------------------------------------
 
-    def parse_file(self, path: str | Path) -> BurpExport:
-        """Parse a single Burp XML export file and return a BurpExport."""
+    def parse_file(self, path: str | Path, import_format: str = "burp") -> BurpExport:
+        """Parse a single XML or JSON file based on the import format."""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
 
-        export = BurpExport(source_file=str(path))
+        if self.verbose:
+            print(f"[*] Parsing {import_format.upper()} export: {path.name} ...")
+
+        if import_format != "burp":
+            raise ValueError("Only Burp XML is supported; ZAP/Caido require complete format adapters")
+
+        export = BurpExport(source_file=path.name)
 
         try:
-            tree = ET.parse(str(path))
-            root = tree.getroot()
-        except ET.ParseError as exc:
-            # Attempt recovery: strip invalid XML characters and retry
-            if self.verbose:
-                print(f"  [!] XML parse error ({exc}), attempting recovery …")
-            root = self._recover_parse(path)
-            if root is None:
-                raise ValueError(f"Cannot parse XML file: {path}") from exc
+            # Stream the XML file to avoid loading huge exports entirely into RAM
+            context = iterparse(str(path), events=("start", "end"))
+            context = iter(context)
+            event, root = next(context)
+            if root.tag != "items":
+                raise ValueError("Expected a Burp <items> document")
 
-        export.burp_version = root.get("burpVersion", "")
-        export.export_time  = root.get("exportTime", "")
+            if root.tag == "items":
+                export.burp_version = root.get("burpVersion", "")
+                export.export_time  = root.get("exportTime", "")
 
-        items_elements = root.findall("item")
-        total = len(items_elements)
-        if self.verbose:
-            print(f"  [*] Found {total} items in {path.name}")
+            idx = 1
+            for event, elem in context:
+                if event == "end" and elem.tag == "item":
+                    item = self._parse_item(elem, idx)
+                    export.items.append(item)
+                    idx += 1
 
-        for idx, elem in enumerate(items_elements, start=1):
-            try:
-                item = self._parse_item(elem, idx)
-                export.items.append(item)
-            except Exception as exc:
-                if self.verbose:
-                    print(f"  [!] Skipping item {idx}: {exc}")
+                    # Free memory for this element
+                    elem.clear()
+                    root.clear()
+        except (ET.ParseError, StopIteration) as e:
+            raise ValueError(f"Invalid or incomplete Burp XML: {path.name}") from e
 
         return export
 
-    def parse_files(self, paths: List[str | Path]) -> List[BurpExport]:
+    def parse_files(self, paths: List[str | Path], import_format: str = "burp") -> List[BurpExport]:
         """Parse multiple XML files and return a list of BurpExport objects."""
-        exports = []
-        for p in paths:
-            try:
-                exports.append(self.parse_file(p))
-            except Exception as exc:
-                if self.verbose:
-                    print(f"  [!] Failed to parse {p}: {exc}")
-        return exports
+        return [self.parse_file(p, import_format=import_format) for p in paths]
 
     def merge_exports(self, exports: List[BurpExport]) -> BurpExport:
         """
@@ -403,19 +403,6 @@ class BurpXMLParser:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _recover_parse(self, path: Path) -> Optional[ET.Element]:
-        """
-        Attempt to parse a malformed XML file by stripping control characters
-        and re-trying the parse.
-        """
-        try:
-            raw = path.read_bytes()
-            # Remove null bytes and other control chars that break ET
-            cleaned = re.sub(rb"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", b"", raw)
-            return ET.fromstring(cleaned)
-        except Exception:
-            return None
 
     def _parse_item(self, elem: ET.Element, idx: int) -> BurpItem:
         """Convert a single <item> XML element into a BurpItem dataclass."""
@@ -458,6 +445,10 @@ class BurpXMLParser:
         # --- Request / Response ---
         item.request_raw  = _decode_field(elem.find("request"))
         item.response_raw = _decode_field(elem.find("response"))
+        resp_elem = elem.find("response")
+        if urlparse(item.url).path.lower().endswith(".wasm") or "wasm" in item.mime_type.lower():
+            if resp_elem is not None and resp_elem.get("base64", "false").lower() == "true":
+                item.response_bytes = base64.b64decode(re.sub(r"\s+", "", resp_elem.text or ""), validate=True)
 
         # Parse HTTP components
         item.request_headers, item.request_body = _parse_request(item.request_raw)
