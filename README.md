@@ -2,7 +2,7 @@
 
 BurpNexus connects captured Burp Suite traffic to application source code for evidence-based security review. The Burp extension exports normalized traffic and deterministic review artifacts. The VS Code extension maps captured endpoints to candidate routes, builds bounded source/traffic evidence, and produces manual test plans or an inspectable prompt for a model. The optional Python CLI imports Burp XML and creates additional offline artifacts.
 
-> **Release status:** 1.1.0 is a tested release candidate. Unit, contract, package, isolated installation, and webview checks pass. The same VS Code runtime previously passed its extension-host check; the final 1.1.0 repeat is temporarily blocked by the local VS Code updater mutex. A live Burp load/export/unload check and a real model-provider quality assessment still need to be completed before production sign-off. See [REVIEW_REPORT.md](REVIEW_REPORT.md).
+> **Release status:** BurpNexus 1.1.0 includes tested Burp, VS Code, and Python components. Complete the live Burp and configured model-provider checks described in the [maintainer release procedure](docs/RELEASING.md) before organizational production sign-off.
 
 Use BurpNexus only on applications you are authorized to test. Generated findings, fuzz cases, and Nuclei templates are review candidates; they are not confirmed vulnerabilities and are never executed automatically.
 
@@ -90,13 +90,11 @@ If VS Code reports “No VS Code models available,” mapping and manual plans s
 - [Installation and builds](docs/INSTALLATION.md)
 - [Tester workflow and troubleshooting](docs/USAGE.md)
 - [Detailed source-review behavior and limits](SOURCE_REVIEW_GUIDE.md)
-- [Release validation and remaining gates](REVIEW_REPORT.md)
 - [Architecture roadmap—proposal, not implemented functionality](AUTOMATION_ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy and data handling](SECURITY.md)
 - [Maintainer release procedure](docs/RELEASING.md)
 
-This candidate is stored locally inside a preserved `versions` directory. Before publishing, place the candidate's contents at the Git repository root so GitHub can discover `.github/workflows`; the exact clean-clone procedure is in the maintainer release guide.
 
 The safe [Juice Shop fixture](examples/juice-shop-export/README.md) can be used to verify installation without creating live traffic. The deterministic [source-review fixture](examples/source-review/README.md) exercises three mapped endpoints and one unobserved route.
 

@@ -29,4 +29,4 @@ Use a new or empty output directory for each export. Existing indexes can be que
 
 Tests: install `requirements-test.txt`, then run `python -m unittest discover -s tests -p "test_*.py" -v`. The optional real-embedding check is `tests/integration_rag.py --work-dir PATH` (requires the RAG extra).
 
-See the repository review report for the release validation boundary. The legacy `burpmd_extension.py` Jython bridge is retained for compatibility investigation but is not a supported release path.
+The legacy `burpmd_extension.py` Jython bridge is retained for compatibility investigation but is not a supported release path.

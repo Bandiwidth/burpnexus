@@ -48,7 +48,7 @@ Before the first public release:
 6. Exercise the intended real VS Code model provider if the release makes model-workflow claims.
 7. Inspect the VSIX file list and verify that the packaged skill/catalog are present.
 8. Review dependency audit results and the documented RAG risk decision.
-9. Update `REVIEW_REPORT.md` with measured results and remaining gates.
+9. Record measured validation results and remaining deployment gates in the GitHub release notes.
 
 Do not describe the release as production-certified while required live checks remain open.
 

@@ -14,4 +14,4 @@ Install the companion VSIX and run **BurpNexus: Connect Export to Source Reposit
 
 The Java extension does not implement the Python-only graph, workflow, asset, OpenAPI, SQLite or vector-index modules. It does not automatically execute generated curl commands or Nuclei probes. Exported traffic is normalized; it is not an exact binary replay archive. Passive findings and templates require manual assessment.
 
-JUnit regression tests are under `src/test/java/nexus/`. Live Burp load/export/unload checks still need to run in the intended deployment version before production sign-off; see [validation report](../../REVIEW_REPORT.md).
+JUnit regression tests are under `src/test/java/nexus/`. Live Burp load/export/unload checks still need to run in the intended deployment version before production sign-off.
