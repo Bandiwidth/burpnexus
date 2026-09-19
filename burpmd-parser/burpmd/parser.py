@@ -353,27 +353,31 @@ class BurpXMLParser:
         export = BurpExport(source_file=path.name)
 
         try:
-            # Stream the XML file to avoid loading huge exports entirely into RAM
-            context = iterparse(str(path), events=("start", "end"))
-            context = iter(context)
-            event, root = next(context)
-            if root.tag != "items":
-                raise ValueError("Expected a Burp <items> document")
+            # Own the input stream so it is closed on every parser exit path.
+            # Passing the path directly leaves the iterparse-managed handle open
+            # after early validation errors on Python 3.10 for Windows.
+            with path.open("rb") as xml_stream:
+                # Stream the XML file to avoid loading huge exports entirely into RAM
+                context = iterparse(xml_stream, events=("start", "end"))
+                context = iter(context)
+                event, root = next(context)
+                if root.tag != "items":
+                    raise ValueError("Expected a Burp <items> document")
 
-            if root.tag == "items":
-                export.burp_version = root.get("burpVersion", "")
-                export.export_time  = root.get("exportTime", "")
+                if root.tag == "items":
+                    export.burp_version = root.get("burpVersion", "")
+                    export.export_time  = root.get("exportTime", "")
 
-            idx = 1
-            for event, elem in context:
-                if event == "end" and elem.tag == "item":
-                    item = self._parse_item(elem, idx)
-                    export.items.append(item)
-                    idx += 1
+                idx = 1
+                for event, elem in context:
+                    if event == "end" and elem.tag == "item":
+                        item = self._parse_item(elem, idx)
+                        export.items.append(item)
+                        idx += 1
 
-                    # Free memory for this element
-                    elem.clear()
-                    root.clear()
+                        # Free memory for this element
+                        elem.clear()
+                        root.clear()
         except (ET.ParseError, StopIteration) as e:
             raise ValueError(f"Invalid or incomplete Burp XML: {path.name}") from e
 

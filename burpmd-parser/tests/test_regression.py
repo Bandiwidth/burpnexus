@@ -119,6 +119,7 @@ class RegressionTests(unittest.TestCase):
     def test_wrong_root_rejected(self):
         self.xml.write_text('<notburp/>')
         with self.assertRaises(ValueError): BurpXMLParser().parse_file(self.xml)
+        self.xml.unlink()
 
     def test_unsupported_import_rejected(self):
         with self.assertRaises(ValueError): BurpXMLParser().parse_file(self.xml,'zap')
