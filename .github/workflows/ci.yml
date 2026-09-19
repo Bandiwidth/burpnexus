@@ -61,7 +61,7 @@ jobs:
         working-directory: Nexus_extension/src
         shell: pwsh
         run: .\gradlew.bat test jar --no-daemon
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: runner.os == 'Linux'
         with:
           name: java-contract-export
@@ -103,7 +103,7 @@ jobs:
         run: |
           unzip -l burpnexus-1.1.0.vsix | grep 'extension/skills/public-bounty-review/SKILL.md'
           unzip -l burpnexus-1.1.0.vsix | grep 'extension/skills/public-bounty-review/references/catalog.json'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: burpnexus-vsix
           path: vscode-extension/burpnexus-1.1.0.vsix
